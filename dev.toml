@@ -1,0 +1,22 @@
+# Myrcast Configuration File
+
+[apis]
+openweather = "ccaedd0261a89cc75e0650b2d64dd71f"
+anthropic = "your-anthropic-api-key-here"
+
+[weather]
+latitude = 37.7749
+longitude = -122.4194
+units = "imperial"
+
+[output]
+temp_directory = "/tmp/myrcast"
+import_path = "/Users/username/Documents/Myrcast"
+
+[speech]
+voice = "alloy"
+speed = 1.0
+format = "mp3_44100_128"
+
+[prompt]
+template = "You are a friendly weather reporter. Generate an engaging weather report for {location} based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."

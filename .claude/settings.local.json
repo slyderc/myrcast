@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__task-master-ai__get_task",
+      "mcp__task-master-ai__set_task_status",
+      "Bash(go mod init:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(go:*)",
+      "mcp__task-master-ai__update_subtask",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(./myrcast)",
+      "Bash(./myrcast:*)",
+      "WebFetch(domain:elevenlabs.io)",
+      "mcp__task-master-ai__get_tasks",
+      "mcp__task-master-ai__next_task"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "task-master-ai"
+  ]
+}
