@@ -3,7 +3,7 @@
 
 [apis]
 # Get your OpenWeather API key at: https://openweathermap.org/api
-openweather = "ccaedd0261a89cc75e0650b2d64dd71f"
+openweather = "your-openweather-api-key-here"
 
 # Get your Anthropic API key at: https://console.anthropic.com/
 anthropic = "your-anthropic-api-key-here"
@@ -36,4 +36,16 @@ format = "mp3_44100_128"
 
 [prompt]
 # Template for AI weather report generation
-template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
+# You can use variables like {{location}}, {{current_temp}}, {{conditions}}, etc.
+template = "You are a friendly weather reporter. Generate an engaging weather report for {{location}} based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
+
+[claude]
+# Claude model to use (defaults to claude-3-5-sonnet-20241022)
+# Available models: claude-3-5-sonnet-20241022, claude-3-opus-20240229, claude-3-haiku-20240307
+model = "claude-3-5-sonnet-20241022"
+
+# Maximum tokens to generate (100-4096)
+max_tokens = 1000
+
+# Temperature for response generation (0-1, higher = more creative)
+temperature = 0.7

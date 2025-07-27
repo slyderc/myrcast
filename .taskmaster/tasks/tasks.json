@@ -276,7 +276,7 @@
             "description": "Install and configure anthropic-sdk-go with proper API key authentication",
             "dependencies": [],
             "details": "Import anthropic-sdk-go package and create authenticated client instance. Load API key from TOML configuration and validate authentication. Set up proper client configuration with base URL and authentication headers. Handle API key validation and connection testing.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -287,7 +287,7 @@
               "5.1"
             ],
             "details": "Parse weather_prompt template from configuration and identify variable placeholders. Implement substitution function that replaces template variables with actual weather data values. Support common template formats like {{variable}} or ${variable}. Handle missing variables gracefully with default values or error reporting.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -298,7 +298,7 @@
               "5.2"
             ],
             "details": "Transform weather data from OpenWeather API into structured format suitable for Claude consumption. Include temperature highs/lows, precipitation probability, wind conditions, and weather alerts in clear, natural language context. Format data to optimize Claude's understanding for generating radio-appropriate weather scripts.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -644,7 +644,7 @@
     ],
     "metadata": {
       "created": "2025-07-25T23:05:31.403Z",
-      "updated": "2025-07-26T00:05:31.271Z",
+      "updated": "2025-07-27T21:07:06.852Z",
       "description": "Tasks for master context"
     }
   }

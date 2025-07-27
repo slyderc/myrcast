@@ -41,6 +41,13 @@ type Prompt struct {
 	Template string `toml:"template"`
 }
 
+// Claude contains Claude AI model configuration
+type Claude struct {
+	Model       string  `toml:"model"`
+	MaxTokens   int     `toml:"max_tokens"`
+	Temperature float64 `toml:"temperature"`
+}
+
 // Config represents the complete application configuration
 type Config struct {
 	APIs    APIs    `toml:"apis"`
@@ -48,6 +55,7 @@ type Config struct {
 	Output  Output  `toml:"output"`
 	Speech  Speech  `toml:"speech"`
 	Prompt  Prompt  `toml:"prompt"`
+	Claude  Claude  `toml:"claude"`
 }
 
 // LoadConfig reads and parses a TOML configuration file
@@ -121,6 +129,17 @@ func (c *Config) ApplyDefaults() {
 	if strings.TrimSpace(c.Prompt.Template) == "" {
 		c.Prompt.Template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
 	}
+	
+	// Default Claude settings
+	if strings.TrimSpace(c.Claude.Model) == "" {
+		c.Claude.Model = "claude-3-5-sonnet-20241022"
+	}
+	if c.Claude.MaxTokens <= 0 {
+		c.Claude.MaxTokens = 1000
+	}
+	if c.Claude.Temperature <= 0 {
+		c.Claude.Temperature = 0.7
+	}
 }
 
 // ConfigNotFoundError represents a missing configuration file
@@ -168,6 +187,11 @@ func (c *Config) Validate() error {
 	
 	// Validate prompt settings
 	if err := c.validatePrompt(); err != nil {
+		errors = append(errors, err...)
+	}
+	
+	// Validate Claude settings
+	if err := c.validateClaude(); err != nil {
 		errors = append(errors, err...)
 	}
 	
@@ -358,6 +382,37 @@ func (c *Config) validatePrompt() []ValidationError {
 	return errors
 }
 
+// validateClaude checks Claude configuration
+func (c *Config) validateClaude() []ValidationError {
+	var errors []ValidationError
+	
+	// Validate model
+	if strings.TrimSpace(c.Claude.Model) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "claude.model",
+			Message: "Claude model is required (e.g., claude-3-5-sonnet-20241022)",
+		})
+	}
+	
+	// Validate max tokens
+	if c.Claude.MaxTokens < 100 || c.Claude.MaxTokens > 4096 {
+		errors = append(errors, ValidationError{
+			Field:   "claude.max_tokens",
+			Message: fmt.Sprintf("max_tokens must be between 100 and 4096, got %d", c.Claude.MaxTokens),
+		})
+	}
+	
+	// Validate temperature
+	if c.Claude.Temperature < 0 || c.Claude.Temperature > 1 {
+		errors = append(errors, ValidationError{
+			Field:   "claude.temperature",
+			Message: fmt.Sprintf("temperature must be between 0 and 1, got %.2f", c.Claude.Temperature),
+		})
+	}
+	
+	return errors
+}
+
 // GenerateSampleConfig creates a sample configuration file at the specified path
 func GenerateSampleConfig(configPath string) error {
 	sampleConfig := `# Myrcast Configuration File
@@ -399,6 +454,16 @@ format = "mp3_44100_128"
 [prompt]
 # Template for AI weather report generation
 template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
+
+[claude]
+# Claude model to use (defaults to claude-3-5-sonnet-20241022)
+model = "claude-3-5-sonnet-20241022"
+
+# Maximum tokens to generate (100-4096)
+max_tokens = 1000
+
+# Temperature for response generation (0-1, higher = more creative)
+temperature = 0.7
 `
 
 	// Create directory if it doesn't exist

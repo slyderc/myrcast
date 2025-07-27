@@ -405,7 +405,7 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 		TempLow:          tempLow,
 		CurrentTemp:      currentTemp,
 		CurrentConditions: currentConditions,
-		RainChance:       maxRainChance * 100, // Convert to percentage
+		RainChance:       maxRainChance, // Keep as decimal (0-1)
 		WindConditions:   windConditions,
 		WeatherAlerts:    weatherAlerts,
 		LastUpdated:      time.Now(),

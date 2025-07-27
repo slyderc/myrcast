@@ -1,108 +1,155 @@
-# Myrcast - Automated Weather Report Generator
+# Myrcast - AI Weather Report Generator
 
-Create a Windows CLI application called "Myrcast" written in Go that automates the generation of AI-voiced weather reports for radio broadcast automation.
+Myrcast is an automated weather report generator that creates AI-voiced weather reports for radio broadcast automation systems like Myriad. The application fetches current weather data and generates professional weather scripts using AI, then converts them to audio files ready for broadcast.
 
-## Application Overview
-Myrcast retrieves weather data, generates a natural-sounding weather report script using Claude, converts it to speech using ElevenLabs, and outputs a WAV file for import into Myriad radio automation software.
+## System Requirements
 
-## Workflow
-1. Load TOML configuration file
-2. Fetch weather forecast from OpenWeather API (5-day forecast endpoint)
-3. Send weather data + custom prompt to Anthropic Claude API
-4. Receive generated weather report script
-5. Send script to ElevenLabs for text-to-speech conversion
-6. Save WAV file with media_id as filename (e.g., "12345.wav")
-7. Copy to Myriad import directory
-8. Log all operations and exit with appropriate status code
+- Windows 10 or later
+- Internet connection for weather data and AI services
+- Myriad radio automation system (or compatible audio import system)
 
-## Technical Requirements
+## Quick Setup
 
-### Language & Libraries
-- **Go 1.21+**
-- Use popular, well-maintained libraries:
-  - Configuration: `github.com/pelletier/go-toml/v2`
-  - HTTP client: `net/http` (standard library) or `github.com/go-resty/resty/v2`
-  - Logging: `log/slog` (standard library)
-  - CLI args: `flag` (standard library)
+1. **Download** the latest `myrcast.exe` from the releases page
+2. **Create** a configuration file named `config.toml` in the same directory
+3. **Configure** your API keys and settings (see Configuration section)
+4. **Run** `myrcast.exe` to generate your first weather report
 
-### Configuration File (TOML)
-The application must accept `--config=filename.toml` parameter and load:
+## Configuration
+
+Create a `config.toml` file with the following structure:
 
 ```toml
 [apis]
-anthropic_api_key = "sk-ant-..."
-anthropic_model = "claude-4-0-sonnet"
-openweather_api_key = "your-openweather-key"
-elevenlabs_api_key = "your-elevenlabs-key"
+# Get your OpenWeather API key at: https://openweathermap.org/api
+openweather = "your-openweather-api-key-here"
+
+# Get your Anthropic API key at: https://console.anthropic.com/
+anthropic = "your-anthropic-api-key-here"
 
 [weather]
-latitude = 47.6062  # Seattle coordinates example
-longitude = -122.3321
-units = imperial  # metric or imperial
+# Your location coordinates (find yours at latlong.net)
+latitude = 40.7589  # Example: New York City
+longitude = -73.9851
+units = "imperial"  # "metric", "imperial", or "kelvin"
 
 [output]
-media_id = 12345
-temp_directory = "C:\temp\myrcast"
-myriad_import_directory = "C:\Myriad\Import"
-log_file = "C:\Program Files\Myrcast\myrcast.log"
+# Where temporary files are stored during processing
+temp_directory = "C:\\temp\\myrcast"
+
+# Where Myriad should import the generated audio files
+import_path = "C:\\Users\\YourName\\Documents\\Myrcast"
 
 [speech]
-voice_name = "Rachel"  # ElevenLabs voice
-speech_speed = 1.0
-audio_format = "wav"  # 44.1kHz/16-bit WAV
+# Voice settings for audio generation
+voice = "alloy"     # Voice ID for text-to-speech
+speed = 1.0         # Speech speed (0.1 to 4.0)
+format = "mp3_44100_128"  # Audio format
 
 [prompt]
-weather_prompt = """Generate a concise, friendly morning weather report for radio broadcast. Include today's high/low temperatures, which are {temp_high} and {temp_low}, precipitation chances, which is {rain_chance}, wind conditions, which are {wind_conditions}, and any notable weather alerts: {weather_alerts} Keep it under 45 seconds when spoken. Write in a conversational, professional radio announcer style."""
+# Your custom weather report template (see Template Variables below)
+template = "Good morning! Here's your weather update for {{location}} on {{dow}}, {{date}}. Currently {{current_temp}} with {{current_conditions}}. Today's high will reach {{temp_high}} with a low of {{temp_low}}. Rain chance is {{rain_chance}}. {{wind_conditions}}. Have a great day!"
+
+[claude]
+# AI model settings
+model = "claude-3-5-sonnet-20241022"
+max_tokens = 1000
+temperature = 0.7
 ```
 
-### API Integration Specifications
+## Template Variables
 
-#### OpenWeather API
-- Endpoint: `https://api.openweathermap.org/data/2.5/forecast`
-- Documentation: `https://openweathermap.org/forecast5`
-- Extract today's weather data from the 5-day forecast
-- Include: temperature (high/low), conditions, precipitation probability, wind speed/direction
-- Handle metric/imperial units appropriately
-- Store API results for today's forecast in variables that can be used in "weather_prompt" configuration file: {temp_low}, {temp_high}, {current_temp}, {current_conditions}, {rain_chance}, {wind_conditions}, {weather_alerts}, {day}, {month}, {year}, {dow}, {time}
+Use these variables in your `[prompt]` template to automatically insert weather data:
 
-#### Anthropic Claude API
-- Documentation: `https://github.com/anthropics/anthropic-sdk-go`
-- Send weather data as structured context + custom prompt
-- Request a weather report script suitable for radio broadcast
-- Handle API rate limits and errors gracefully
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{location}}` | Location name from configuration | "New York City" |
+| `{{city}}` | City name from weather data | "New York" |
+| `{{country}}` | Country code | "US" |
+| `{{current_temp}}` | Current temperature with units | "72°F" |
+| `{{temp_high}}` | Today's high temperature | "78°F" |
+| `{{temp_low}}` | Today's low temperature | "65°F" |
+| `{{current_conditions}}` | Current weather description | "partly cloudy" |
+| `{{wind_conditions}}` | Wind speed and direction | "Light SW winds at 8 mph" |
+| `{{rain_chance}}` | Precipitation probability | "20%" |
+| `{{weather_alerts}}` | Notable weather conditions | "thunderstorms possible" |
+| `{{date}}` | Today's date | "January 15" |
+| `{{dow}}` | Day of the week | "Monday" |
+| `{{time}}` | Current time | "9:30 AM" |
+| `{{units}}` | Temperature unit system | "imperial" |
 
-#### ElevenLabs API
-- Documentation `https://elevenlabs.io/docs/api-reference/introduction`
-- Convert generated script to speech using specified voice and speed
-- Download WAV file (44.1kHz/16-bit)
-- Handle voice availability and API limits
+## Example Weather Prompt Templates
 
-### File Operations
-- Create temp directory if it doesn't exist
-- Write WAV file as `{media_id}.wav` in temp directory
-- Copy to Myriad import directory
-- Clean up temp files after successful copy
+### 1. Professional Morning Show Format
+```toml
+template = "Good morning {{location}}! It's {{time}} on {{dow}}, {{date}}. Your weather forecast shows {{current_conditions}} with {{current_temp}}. We're looking at a high of {{temp_high}} and a low tonight of {{temp_low}}. There's a {{rain_chance}} chance of precipitation today. {{wind_conditions}}. That's your weather update, stay tuned for more music!"
+```
 
-### Error Handling & Logging
-- Log all operations to specified log file with timestamps
-- Return exit code 0 for success, non-zero for any failure
-- Log API response codes, file operations, and error details
-- Handle network timeouts, API rate limits, file permission errors
+### 2. Casual Drive-Time Style
+```toml
+template = "Hey {{location}}, happy {{dow}}! Right now it's {{current_temp}} and {{current_conditions}} out there. Today we'll hit {{temp_high}}, cooling down to {{temp_low}} tonight. Rain chances are looking at {{rain_chance}}. {{wind_conditions}}. Drive safe out there and have a great day!"
+```
 
-### Windows CLI Executable
-- Single binary with no external dependencies
-- Accept `--config=path/to/config.toml` command line argument
-- Validate configuration on startup
-- Provide helpful error messages for missing config values
+### 3. Detailed Weather Report
+```toml
+template = "This is your comprehensive weather outlook for {{location}} on {{dow}}, {{date}}. Current conditions show {{current_temp}} with {{current_conditions}}. Today's forecast calls for a high temperature of {{temp_high}} and an overnight low of {{temp_low}}. Precipitation probability stands at {{rain_chance}}. Wind conditions: {{wind_conditions}}. Weather alerts: {{weather_alerts}}. For updated forecasts, stay tuned to your weather station."
+```
 
-## Key Implementation Notes
-- Ensure proper file path handling for Windows
-- Use structured logging with appropriate log levels (INFO, WARN, ERROR)
-- Implement proper HTTP timeouts and retries for API calls
-- Validate all configuration values before processing
-- Include version information and basic help text
+## Running Myrcast
 
-## Success Criteria
-The application should run reliably as a scheduled task in Myriad, produce consistent audio output, handle common failure scenarios gracefully, and provide clear logging for troubleshooting.
+### Command Line Usage
+```cmd
+# Generate a weather report with default settings
+myrcast.exe
 
-Build this as a production-ready tool suitable for daily use in a radio broadcast environment.
+# Use a specific configuration file
+myrcast.exe --config "C:\path\to\your\config.toml"
+
+# Generate sample configuration file
+myrcast.exe --generate-config
+```
+
+### Scheduled Automation
+Set up Windows Task Scheduler to run Myrcast automatically:
+
+1. Open **Task Scheduler**
+2. Create **Basic Task**
+3. Set trigger (e.g., "Daily at 6:00 AM")
+4. Set action to run `myrcast.exe`
+5. Configure Myriad to auto-import from your `import_path`
+
+## Output Files
+
+Myrcast generates audio files in your configured `import_path` with naming format:
+- `weather_report_YYYYMMDD_HHMMSS.wav`
+- Example: `weather_report_20240115_063000.wav`
+
+Configure Myriad to monitor this directory for automatic import and scheduling.
+
+## API Keys Setup
+
+### OpenWeather API
+1. Visit [openweathermap.org/api](https://openweathermap.org/api)
+2. Sign up for a free account
+3. Generate an API key
+4. Add it to your `config.toml` file
+
+### Anthropic Claude API
+1. Visit [console.anthropic.com](https://console.anthropic.com/)
+2. Create an account and add billing information
+3. Generate an API key
+4. Add it to your `config.toml` file
+
+## Troubleshooting
+
+**No audio output**: Check your `import_path` directory exists and is writable
+
+**API errors**: Verify your API keys are valid and have sufficient credits
+
+**Location not found**: Double-check your latitude/longitude coordinates
+
+**Template not working**: Ensure variables use `{{variable}}` format with double braces
+
+## Support
+
+For technical support or feature requests, please check the project documentation or contact your system administrator.
