@@ -1,0 +1,250 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"myrcast/api"
+	"myrcast/config"
+	"myrcast/internal/logger"
+)
+
+// ElevenLabsModel represents a model from the ElevenLabs API
+type ElevenLabsModel struct {
+	ModelID          string   `json:"model_id"`
+	Name             string   `json:"name"`
+	CanBeFinetuned   bool     `json:"can_be_finetuned"`
+	CanDoTextToSpeech bool    `json:"can_do_text_to_speech"`
+	CanDoVoiceConversion bool `json:"can_do_voice_conversion"`
+	TokenCostFactor  float64  `json:"token_cost_factor"`
+	Description      string   `json:"description"`
+	RequiresAlphaAccess bool  `json:"requires_alpha_access"`
+	MaxCharactersRequestFreeUser int `json:"max_characters_request_free_user"`
+	MaxCharactersRequestSubscribedUser int `json:"max_characters_request_subscribed_user"`
+	Languages        []ElevenLabsLanguage `json:"languages"`
+}
+
+// ElevenLabsLanguage represents a supported language
+type ElevenLabsLanguage struct {
+	LanguageID string `json:"language_id"`
+	Name       string `json:"name"`
+}
+
+// fetchElevenLabsModels retrieves all available models from the ElevenLabs API
+func fetchElevenLabsModels(apiKey string) ([]ElevenLabsModel, error) {
+	url := "https://api.elevenlabs.io/v1/models"
+	
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	req.Header.Set("xi-api-key", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make API request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	
+	var models []ElevenLabsModel
+	if err := json.Unmarshal(body, &models); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+	
+	return models, nil
+}
+
+// displayModels prints information about available models
+func displayModels(models []ElevenLabsModel) {
+	fmt.Printf("\n📋 Available ElevenLabs Models:\n")
+	fmt.Printf("=" + fmt.Sprintf("%50s", "") + "\n")
+	
+	for i, model := range models {
+		fmt.Printf("\n%d. %s (%s)\n", i+1, model.Name, model.ModelID)
+		fmt.Printf("   Description: %s\n", model.Description)
+		fmt.Printf("   Text-to-Speech: %v | Voice Conversion: %v | Fine-tuning: %v\n", 
+			model.CanDoTextToSpeech, model.CanDoVoiceConversion, model.CanBeFinetuned)
+		fmt.Printf("   Token Cost Factor: %.2fx\n", model.TokenCostFactor)
+		
+		if model.RequiresAlphaAccess {
+			fmt.Printf("   ⚠️  Requires Alpha Access\n")
+		}
+		
+		if len(model.Languages) > 0 {
+			fmt.Printf("   Languages: ")
+			for j, lang := range model.Languages {
+				if j > 0 {
+					fmt.Printf(", ")
+				}
+				fmt.Printf("%s", lang.Name)
+				if j >= 4 { // Limit display to first 5 languages
+					remaining := len(model.Languages) - 5
+					if remaining > 0 {
+						fmt.Printf(" (+%d more)", remaining)
+					}
+					break
+				}
+			}
+			fmt.Printf("\n")
+		}
+		
+		if model.MaxCharactersRequestFreeUser > 0 {
+			fmt.Printf("   Max chars (free): %d | Max chars (subscribed): %d\n", 
+				model.MaxCharactersRequestFreeUser, model.MaxCharactersRequestSubscribedUser)
+		}
+	}
+	fmt.Printf("\n")
+}
+
+func main() {
+	// Set up console logging
+	logger.Info("Starting ElevenLabs Text-to-Speech demonstration")
+
+	// Load configuration from dev.toml
+	cfg, err := config.LoadConfig("dev.toml")
+	if err != nil {
+		log.Fatalf("Failed to load dev.toml configuration: %v", err)
+	}
+
+	// Verify ElevenLabs API key is configured
+	if cfg.APIs.ElevenLabs == "" || cfg.APIs.ElevenLabs == "your-elevenlabs-api-key-here" {
+		log.Fatalf("ElevenLabs API key not configured in dev.toml. Please add your API key to the [apis] section.")
+	}
+
+	fmt.Printf("\n=== ElevenLabs API Models Demo ===\n")
+	
+	// Fetch and display available models
+	fmt.Printf("🔍 Fetching available models from ElevenLabs API...\n")
+	models, err := fetchElevenLabsModels(cfg.APIs.ElevenLabs)
+	if err != nil {
+		log.Fatalf("Failed to fetch ElevenLabs models: %v", err)
+	}
+	
+	displayModels(models)
+	
+	// Find the model we're going to use
+	var selectedModel *ElevenLabsModel
+	for _, model := range models {
+		if model.ModelID == cfg.ElevenLabs.Model {
+			selectedModel = &model
+			break
+		}
+	}
+	
+	if selectedModel != nil {
+		fmt.Printf("✅ Selected model for demo: %s (%s)\n", selectedModel.Name, selectedModel.ModelID)
+		fmt.Printf("   %s\n", selectedModel.Description)
+	} else {
+		fmt.Printf("⚠️  Configured model '%s' not found in available models, using default\n", cfg.ElevenLabs.Model)
+	}
+
+	// Create ElevenLabs client configuration
+	elevenLabsConfig := api.ElevenLabsConfig{
+		APIKey:     cfg.APIs.ElevenLabs,
+		VoiceID:    cfg.ElevenLabs.VoiceID,
+		Model:      cfg.ElevenLabs.Model,
+		Stability:  cfg.ElevenLabs.Stability,
+		Similarity: cfg.ElevenLabs.Similarity,
+		Style:      cfg.ElevenLabs.Style,
+		Timeout:    30 * time.Second,
+		MaxRetries: cfg.ElevenLabs.MaxRetries,
+		BaseDelay:  time.Duration(cfg.ElevenLabs.BaseDelayMs) * time.Millisecond,
+		MaxDelay:   time.Duration(cfg.ElevenLabs.MaxDelayMs) * time.Millisecond,
+		RateLimit:  cfg.ElevenLabs.RateLimit,
+	}
+
+	// Create ElevenLabs client
+	client, err := api.NewElevenLabsClient(elevenLabsConfig)
+	if err != nil {
+		log.Fatalf("Failed to create ElevenLabs client: %v", err)
+	}
+
+	// Sample weather report text for demonstration
+	weatherReportText := `Good morning, listeners! This is your daily weather update for San Francisco. 
+
+Today we're looking at a beautiful sunny day with clear blue skies and comfortable temperatures. The current temperature is 72 degrees Fahrenheit, with a high expected to reach 78 degrees this afternoon.
+
+Winds are light and variable at around 5 miles per hour, coming from the west. There's virtually no chance of rain today, so it's a perfect day to get outside and enjoy the sunshine.
+
+For tonight, temperatures will drop to a pleasant 65 degrees with continued clear skies. Tomorrow looks equally fantastic with similar conditions.
+
+This has been your weather update. Have a wonderful day, San Francisco!`
+
+	// Create output directory for demo files
+	outputDir := filepath.Join(".", "demo_output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Fatalf("Failed to create output directory: %v", err)
+	}
+
+	// Create text-to-speech request
+	request := api.TextToSpeechRequest{
+		Text:      weatherReportText,
+		OutputDir: outputDir,
+		FileName:  "elevenlabs_demo_weather_report",
+	}
+
+	fmt.Printf("\n=== Text-to-Speech Generation ===\n")
+	fmt.Printf("Voice ID: %s\n", elevenLabsConfig.VoiceID)
+	fmt.Printf("Model: %s\n", elevenLabsConfig.Model)
+	fmt.Printf("Text length: %d characters\n", len(weatherReportText))
+	fmt.Printf("Output directory: %s\n", outputDir)
+	fmt.Printf("\nGenerating audio...\n")
+
+	// Execute text-to-speech generation with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	startTime := time.Now()
+	response, err := client.GenerateTextToSpeech(ctx, request)
+	duration := time.Since(startTime)
+
+	if err != nil {
+		log.Fatalf("Failed to generate text-to-speech: %v", err)
+	}
+
+	// Display results
+	fmt.Printf("\n✅ Audio generation completed successfully!\n")
+	fmt.Printf("Generation time: %.2f seconds\n", duration.Seconds())
+	fmt.Printf("Voice used: %s\n", response.VoiceUsed)
+	fmt.Printf("Audio duration: %d ms (%.1f seconds)\n", response.DurationMs, float64(response.DurationMs)/1000.0)
+	fmt.Printf("\nFiles created:\n")
+	fmt.Printf("  📄 Original MP3: %s\n", response.OriginalMP3)
+	fmt.Printf("  🎵 Radio WAV:    %s\n", response.AudioFilePath)
+
+	// Get file sizes for information
+	if mp3Info, err := os.Stat(response.OriginalMP3); err == nil {
+		fmt.Printf("  📊 MP3 size:     %d bytes (%.1f KB)\n", mp3Info.Size(), float64(mp3Info.Size())/1024.0)
+	}
+	
+	if wavInfo, err := os.Stat(response.AudioFilePath); err == nil {
+		fmt.Printf("  📊 WAV size:     %d bytes (%.1f KB)\n", wavInfo.Size(), float64(wavInfo.Size())/1024.0)
+	}
+
+	fmt.Printf("\n🎧 You can now play the MP3 file:\n")
+	fmt.Printf("   open \"%s\"\n", response.OriginalMP3)
+	
+	fmt.Printf("\n📻 The WAV file is optimized for radio broadcast (44.1kHz/16-bit mono):\n")
+	fmt.Printf("   open \"%s\"\n", response.AudioFilePath)
+
+	logger.Info("ElevenLabs Text-to-Speech demonstration completed successfully")
+}

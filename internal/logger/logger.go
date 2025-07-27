@@ -26,11 +26,11 @@ const (
 var (
 	// Default slog logger instance
 	defaultLogger *slog.Logger
-	
+
 	// Current output writers for dual output
 	consoleWriter io.Writer = os.Stdout
 	fileWriter    io.Writer
-	
+
 	// Current minimum level
 	currentLevel Level = InfoLevel
 )
@@ -42,7 +42,7 @@ func init() {
 // setupLogger initializes the default logger with console output
 func setupLogger() {
 	opts := &slog.HandlerOptions{
-		Level: slog.Level(currentLevel),
+		Level:     slog.Level(currentLevel),
 		AddSource: true,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			// Customize source attribute to show only filename:line
@@ -54,7 +54,7 @@ func setupLogger() {
 			return a
 		},
 	}
-	
+
 	// Create text handler for console output
 	handler := slog.NewTextHandler(consoleWriter, opts)
 	defaultLogger = slog.New(handler)
@@ -77,14 +77,14 @@ func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
 			return err
 		}
 	}
-	
+
 	// Write to file if configured
 	if h.fileHandler != nil {
 		if err := h.fileHandler.Handle(ctx, r); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -109,24 +109,24 @@ func SetOutput(filename string) error {
 		setupLogger()
 		return nil
 	}
-	
+
 	// Create log directory if needed (Windows compatible)
 	dir := filepath.Dir(filename)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
-	
+
 	// Open log file with appropriate permissions
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
-	
+
 	fileWriter = file
-	
+
 	// Create handlers for both console and file
 	opts := &slog.HandlerOptions{
-		Level: slog.Level(currentLevel),
+		Level:     slog.Level(currentLevel),
 		AddSource: true,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.SourceKey {
@@ -137,16 +137,16 @@ func SetOutput(filename string) error {
 			return a
 		},
 	}
-	
+
 	consoleHandler := slog.NewTextHandler(consoleWriter, opts)
 	fileHandler := slog.NewTextHandler(fileWriter, opts)
-	
+
 	// Create multi-handler for dual output
 	multiH := &multiHandler{
 		consoleHandler: consoleHandler,
 		fileHandler:    fileHandler,
 	}
-	
+
 	defaultLogger = slog.New(multiH)
 	return nil
 }
@@ -158,7 +158,7 @@ func SetLevel(level Level) {
 	if fileWriter != nil {
 		// Dual output mode
 		opts := &slog.HandlerOptions{
-			Level: slog.Level(currentLevel),
+			Level:     slog.Level(currentLevel),
 			AddSource: true,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 				if a.Key == slog.SourceKey {
@@ -169,15 +169,15 @@ func SetLevel(level Level) {
 				return a
 			},
 		}
-		
+
 		consoleHandler := slog.NewTextHandler(consoleWriter, opts)
 		fileHandler := slog.NewTextHandler(fileWriter, opts)
-		
+
 		multiH := &multiHandler{
 			consoleHandler: consoleHandler,
 			fileHandler:    fileHandler,
 		}
-		
+
 		defaultLogger = slog.New(multiH)
 	} else {
 		// Console only
@@ -192,7 +192,7 @@ func Debug(format string, args ...interface{}) {
 	logWithCaller(DebugLevel, fmt.Sprintf(format, args...))
 }
 
-// Info logs an info message  
+// Info logs an info message
 func Info(format string, args ...interface{}) {
 	logWithCaller(InfoLevel, fmt.Sprintf(format, args...))
 }
@@ -218,19 +218,19 @@ func logWithCaller(level Level, msg string) {
 	if level < currentLevel {
 		return
 	}
-	
+
 	// Get caller information for context
 	_, file, line, ok := runtime.Caller(2)
 	if ok {
 		file = filepath.Base(file)
 	}
-	
+
 	// Convert our Level to slog.Level for logging
 	slogLevel := slog.Level(level)
 	if level == FatalLevel {
 		slogLevel = slog.LevelError // Log as error since slog doesn't have fatal
 	}
-	
+
 	// Log with source context
 	if ok {
 		defaultLogger.Log(nil, slogLevel, msg, "source", fmt.Sprintf("%s:%d", file, line))
@@ -248,12 +248,12 @@ func LogAPIRequest(method, url string, headers map[string]string) {
 		"url", url,
 		"type", "api_request",
 	}
-	
+
 	// Add important headers (excluding sensitive ones)
 	if userAgent := headers["User-Agent"]; userAgent != "" {
 		fields = append(fields, "user_agent", userAgent)
 	}
-	
+
 	defaultLogger.LogAttrs(context.Background(), slog.LevelInfo, "API request started", slog.Group("request", fields...))
 }
 
@@ -266,7 +266,7 @@ func LogAPIResponse(method, url string, statusCode int, duration string, bodySiz
 	if statusCode >= 500 {
 		level = slog.LevelError
 	}
-	
+
 	defaultLogger.LogAttrs(context.Background(), level, "API request completed",
 		slog.Group("request",
 			"method", method,
@@ -297,7 +297,7 @@ func LogFileError(operation, filePath string, err error) {
 	if ok {
 		file = filepath.Base(file)
 	}
-	
+
 	attrs := []slog.Attr{
 		slog.Group("file",
 			slog.String("operation", operation),
@@ -306,24 +306,24 @@ func LogFileError(operation, filePath string, err error) {
 		),
 		slog.String("error", err.Error()),
 	}
-	
+
 	if ok {
 		attrs = append(attrs, slog.String("source", fmt.Sprintf("%s:%d", file, line)))
 	}
-	
+
 	defaultLogger.LogAttrs(context.Background(), slog.LevelError, "File operation failed", attrs...)
 }
 
 // LogOperationStart logs the beginning of an operation and returns a completion function
 func LogOperationStart(operation string, details map[string]any) func(error) {
 	startTime := time.Now()
-	
+
 	attrs := []slog.Attr{
 		slog.String("operation", operation),
 		slog.String("type", "operation_start"),
 		slog.Time("start_time", startTime),
 	}
-	
+
 	// Add details as structured attributes
 	if details != nil {
 		detailAttrs := make([]any, 0, len(details)*2)
@@ -332,28 +332,28 @@ func LogOperationStart(operation string, details map[string]any) func(error) {
 		}
 		attrs = append(attrs, slog.Group("details", detailAttrs...))
 	}
-	
+
 	defaultLogger.LogAttrs(context.Background(), slog.LevelInfo, "Operation started", attrs...)
-	
+
 	// Return completion function
 	return func(err error) {
 		duration := time.Since(startTime)
 		level := slog.LevelInfo
 		message := "Operation completed"
-		
+
 		completionAttrs := []slog.Attr{
 			slog.String("operation", operation),
 			slog.String("type", "operation_complete"),
 			slog.Duration("duration", duration),
 			slog.Bool("success", err == nil),
 		}
-		
+
 		if err != nil {
 			level = slog.LevelError
 			message = "Operation failed"
 			completionAttrs = append(completionAttrs, slog.String("error", err.Error()))
 		}
-		
+
 		defaultLogger.LogAttrs(context.Background(), level, message, completionAttrs...)
 	}
 }
@@ -364,16 +364,16 @@ func LogStructuredError(err error, ctxFields map[string]any) {
 	if ok {
 		file = filepath.Base(file)
 	}
-	
+
 	attrs := []slog.Attr{
 		slog.String("error", err.Error()),
 		slog.String("type", "structured_error"),
 	}
-	
+
 	if ok {
 		attrs = append(attrs, slog.String("source", fmt.Sprintf("%s:%d", file, line)))
 	}
-	
+
 	// Add context as structured attributes
 	if ctxFields != nil && len(ctxFields) > 0 {
 		contextAttrs := make([]any, 0, len(ctxFields)*2)
@@ -382,7 +382,7 @@ func LogStructuredError(err error, ctxFields map[string]any) {
 		}
 		attrs = append(attrs, slog.Group("context", contextAttrs...))
 	}
-	
+
 	defaultLogger.LogAttrs(context.Background(), slog.LevelError, "Error occurred", attrs...)
 }
 
@@ -391,20 +391,20 @@ func LogWithFields(level Level, message string, fields map[string]any) {
 	if level < currentLevel {
 		return
 	}
-	
+
 	slogLevel := slog.Level(level)
 	if level == FatalLevel {
 		slogLevel = slog.LevelError
 	}
-	
+
 	// Convert fields to slog attributes
 	attrs := make([]slog.Attr, 0, len(fields))
 	for k, v := range fields {
 		attrs = append(attrs, slog.Any(k, v))
 	}
-	
+
 	defaultLogger.LogAttrs(context.Background(), slogLevel, message, attrs...)
-	
+
 	if level == FatalLevel {
 		os.Exit(1)
 	}

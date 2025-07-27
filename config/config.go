@@ -14,6 +14,7 @@ import (
 type APIs struct {
 	OpenWeather string `toml:"openweather"`
 	Anthropic   string `toml:"anthropic"`
+	ElevenLabs  string `toml:"elevenlabs"`
 }
 
 // Weather contains weather query configuration
@@ -29,13 +30,6 @@ type Output struct {
 	ImportPath    string `toml:"import_path"`
 }
 
-// Speech contains text-to-speech configuration
-type Speech struct {
-	Voice  string  `toml:"voice"`
-	Speed  float64 `toml:"speed"`
-	Format string  `toml:"format"`
-}
-
 // Prompt contains AI prompt template configuration
 type Prompt struct {
 	Template string `toml:"template"`
@@ -46,23 +40,42 @@ type Claude struct {
 	Model       string  `toml:"model"`
 	MaxTokens   int     `toml:"max_tokens"`
 	Temperature float64 `toml:"temperature"`
+	MaxRetries  int     `toml:"max_retries"`
+	BaseDelayMs int     `toml:"base_delay_ms"` // Base delay in milliseconds
+	MaxDelayMs  int     `toml:"max_delay_ms"`  // Max delay in milliseconds
+	RateLimit   int     `toml:"rate_limit"`    // Requests per minute
+}
+
+// ElevenLabs contains ElevenLabs API configuration
+type ElevenLabs struct {
+	VoiceID     string  `toml:"voice_id"`     // ElevenLabs voice ID
+	Model       string  `toml:"model"`        // Voice model (e.g., eleven_multilingual_v1)
+	Stability   float64 `toml:"stability"`    // Voice stability (0.0-1.0)
+	Similarity  float64 `toml:"similarity"`   // Voice similarity boost (0.0-1.0)
+	Style       float64 `toml:"style"`        // Style exaggeration (0.0-1.0)
+	Speed       float64 `toml:"speed"`        // Speaking speed (0.25-4.0, 1.0 = normal)
+	Format      string  `toml:"format"`       // Audio format (e.g., mp3_44100_128)
+	MaxRetries  int     `toml:"max_retries"`  // Max retry attempts
+	BaseDelayMs int     `toml:"base_delay_ms"` // Base delay in milliseconds
+	MaxDelayMs  int     `toml:"max_delay_ms"`  // Max delay in milliseconds
+	RateLimit   int     `toml:"rate_limit"`    // Requests per minute
 }
 
 // Config represents the complete application configuration
 type Config struct {
-	APIs    APIs    `toml:"apis"`
-	Weather Weather `toml:"weather"`
-	Output  Output  `toml:"output"`
-	Speech  Speech  `toml:"speech"`
-	Prompt  Prompt  `toml:"prompt"`
-	Claude  Claude  `toml:"claude"`
+	APIs       APIs       `toml:"apis"`
+	Weather    Weather    `toml:"weather"`
+	Output     Output     `toml:"output"`
+	Prompt     Prompt     `toml:"prompt"`
+	Claude     Claude     `toml:"claude"`
+	ElevenLabs ElevenLabs `toml:"elevenlabs"`
 }
 
 // LoadConfig reads and parses a TOML configuration file
 func LoadConfig(configPath string) (*Config, error) {
 	// Clean the path to handle both Windows and Unix paths
 	cleanPath := filepath.Clean(configPath)
-	
+
 	// Read the TOML file
 	data, err := os.ReadFile(cleanPath)
 	if err != nil {
@@ -83,7 +96,7 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	// Apply default values
 	config.ApplyDefaults()
-	
+
 	return &config, nil
 }
 
@@ -93,7 +106,7 @@ func (c *Config) ApplyDefaults() {
 	if strings.TrimSpace(c.Weather.Units) == "" {
 		c.Weather.Units = "imperial"
 	}
-	
+
 	// Default temp directory
 	if strings.TrimSpace(c.Output.TempDirectory) == "" {
 		homeDir, err := os.UserHomeDir()
@@ -103,7 +116,7 @@ func (c *Config) ApplyDefaults() {
 			c.Output.TempDirectory = filepath.Join(homeDir, ".myrcast", "temp")
 		}
 	}
-	
+
 	// Default import path
 	if strings.TrimSpace(c.Output.ImportPath) == "" {
 		homeDir, err := os.UserHomeDir()
@@ -113,23 +126,13 @@ func (c *Config) ApplyDefaults() {
 			c.Output.ImportPath = filepath.Join(homeDir, "Documents", "Myrcast")
 		}
 	}
-	
-	// Default speech settings
-	if strings.TrimSpace(c.Speech.Voice) == "" {
-		c.Speech.Voice = "alloy"
-	}
-	if c.Speech.Speed <= 0 {
-		c.Speech.Speed = 1.0
-	}
-	if strings.TrimSpace(c.Speech.Format) == "" {
-		c.Speech.Format = "mp3_44100_128"
-	}
-	
+
+
 	// Default prompt template
 	if strings.TrimSpace(c.Prompt.Template) == "" {
 		c.Prompt.Template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
 	}
-	
+
 	// Default Claude settings
 	if strings.TrimSpace(c.Claude.Model) == "" {
 		c.Claude.Model = "claude-3-5-sonnet-20241022"
@@ -139,6 +142,41 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.Claude.Temperature <= 0 {
 		c.Claude.Temperature = 0.7
+	}
+
+	// Default ElevenLabs settings
+	if strings.TrimSpace(c.ElevenLabs.VoiceID) == "" {
+		c.ElevenLabs.VoiceID = "pNInz6obpgDQGcFmaJgB" // Default Adam voice
+	}
+	if strings.TrimSpace(c.ElevenLabs.Model) == "" {
+		c.ElevenLabs.Model = "eleven_multilingual_v1"
+	}
+	if c.ElevenLabs.Stability <= 0 {
+		c.ElevenLabs.Stability = 0.5
+	}
+	if c.ElevenLabs.Similarity <= 0 {
+		c.ElevenLabs.Similarity = 0.8
+	}
+	if c.ElevenLabs.Style <= 0 {
+		c.ElevenLabs.Style = 0.0
+	}
+	if c.ElevenLabs.Speed <= 0 {
+		c.ElevenLabs.Speed = 1.0
+	}
+	if strings.TrimSpace(c.ElevenLabs.Format) == "" {
+		c.ElevenLabs.Format = "mp3_44100_128"
+	}
+	if c.ElevenLabs.MaxRetries <= 0 {
+		c.ElevenLabs.MaxRetries = 3
+	}
+	if c.ElevenLabs.BaseDelayMs <= 0 {
+		c.ElevenLabs.BaseDelayMs = 1000
+	}
+	if c.ElevenLabs.MaxDelayMs <= 0 {
+		c.ElevenLabs.MaxDelayMs = 30000
+	}
+	if c.ElevenLabs.RateLimit <= 0 {
+		c.ElevenLabs.RateLimit = 20 // Conservative rate limit for ElevenLabs
 	}
 }
 
@@ -164,41 +202,42 @@ func (e ValidationError) Error() string {
 // Validate checks the configuration for correctness and completeness
 func (c *Config) Validate() error {
 	var errors []ValidationError
-	
+
 	// Validate API keys
 	if err := c.validateAPIKeys(); err != nil {
 		errors = append(errors, err...)
 	}
-	
+
 	// Validate weather settings
 	if err := c.validateWeather(); err != nil {
 		errors = append(errors, err...)
 	}
-	
+
 	// Validate output settings
 	if err := c.validateOutput(); err != nil {
 		errors = append(errors, err...)
 	}
-	
-	// Validate speech settings
-	if err := c.validateSpeech(); err != nil {
-		errors = append(errors, err...)
-	}
-	
+
+
 	// Validate prompt settings
 	if err := c.validatePrompt(); err != nil {
 		errors = append(errors, err...)
 	}
-	
+
 	// Validate Claude settings
 	if err := c.validateClaude(); err != nil {
 		errors = append(errors, err...)
 	}
-	
+
+	// Validate ElevenLabs settings
+	if err := c.validateElevenLabs(); err != nil {
+		errors = append(errors, err...)
+	}
+
 	if len(errors) > 0 {
 		return &MultiValidationError{Errors: errors}
 	}
-	
+
 	return nil
 }
 
@@ -218,28 +257,35 @@ func (e *MultiValidationError) Error() string {
 // validateAPIKeys checks that required API keys are present
 func (c *Config) validateAPIKeys() []ValidationError {
 	var errors []ValidationError
-	
+
 	if strings.TrimSpace(c.APIs.OpenWeather) == "" {
 		errors = append(errors, ValidationError{
 			Field:   "apis.openweather",
 			Message: "OpenWeather API key is required. Get one at https://openweathermap.org/api",
 		})
 	}
-	
+
 	if strings.TrimSpace(c.APIs.Anthropic) == "" {
 		errors = append(errors, ValidationError{
 			Field:   "apis.anthropic",
 			Message: "Anthropic API key is required. Get one at https://console.anthropic.com/",
 		})
 	}
-	
+
+	if strings.TrimSpace(c.APIs.ElevenLabs) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "apis.elevenlabs",
+			Message: "ElevenLabs API key is required. Get one at https://elevenlabs.io/",
+		})
+	}
+
 	return errors
 }
 
 // validateWeather checks weather configuration
 func (c *Config) validateWeather() []ValidationError {
 	var errors []ValidationError
-	
+
 	// Validate latitude range
 	if c.Weather.Latitude < -90 || c.Weather.Latitude > 90 {
 		errors = append(errors, ValidationError{
@@ -247,7 +293,7 @@ func (c *Config) validateWeather() []ValidationError {
 			Message: fmt.Sprintf("latitude must be between -90 and 90, got %.6f", c.Weather.Latitude),
 		})
 	}
-	
+
 	// Validate longitude range
 	if c.Weather.Longitude < -180 || c.Weather.Longitude > 180 {
 		errors = append(errors, ValidationError{
@@ -255,7 +301,7 @@ func (c *Config) validateWeather() []ValidationError {
 			Message: fmt.Sprintf("longitude must be between -180 and 180, got %.6f", c.Weather.Longitude),
 		})
 	}
-	
+
 	// Validate units
 	validUnits := []string{"metric", "imperial", "kelvin"}
 	units := strings.ToLower(strings.TrimSpace(c.Weather.Units))
@@ -279,14 +325,14 @@ func (c *Config) validateWeather() []ValidationError {
 			})
 		}
 	}
-	
+
 	return errors
 }
 
 // validateOutput checks output directory configuration
 func (c *Config) validateOutput() []ValidationError {
 	var errors []ValidationError
-	
+
 	// Validate temp directory
 	if strings.TrimSpace(c.Output.TempDirectory) == "" {
 		errors = append(errors, ValidationError{
@@ -315,7 +361,7 @@ func (c *Config) validateOutput() []ValidationError {
 			}
 		}
 	}
-	
+
 	// Validate import path
 	if strings.TrimSpace(c.Output.ImportPath) == "" {
 		errors = append(errors, ValidationError{
@@ -323,69 +369,29 @@ func (c *Config) validateOutput() []ValidationError {
 			Message: "import path is required",
 		})
 	}
-	
+
 	return errors
 }
 
-// validateSpeech checks speech configuration
-func (c *Config) validateSpeech() []ValidationError {
-	var errors []ValidationError
-	
-	// Validate voice (any non-empty string is valid, ElevenLabs API will validate)
-	voice := strings.TrimSpace(c.Speech.Voice)
-	if voice == "" {
-		errors = append(errors, ValidationError{
-			Field:   "speech.voice",
-			Message: "voice is required (will be validated by ElevenLabs API)",
-		})
-	}
-	
-	// Validate speed
-	if c.Speech.Speed <= 0 || c.Speech.Speed > 4.0 {
-		errors = append(errors, ValidationError{
-			Field:   "speech.speed",
-			Message: fmt.Sprintf("speech speed must be between 0.1 and 4.0, got %.2f", c.Speech.Speed),
-		})
-	}
-	
-	// Validate format (ElevenLabs format: codec_samplerate_bitrate)
-	format := strings.TrimSpace(c.Speech.Format)
-	if format == "" {
-		errors = append(errors, ValidationError{
-			Field:   "speech.format",
-			Message: "audio format is required (ElevenLabs format: codec_samplerate_bitrate, e.g., mp3_44100_128)",
-		})
-	} else {
-		// Basic validation for ElevenLabs format pattern
-		if !isValidElevenLabsFormat(format) {
-			errors = append(errors, ValidationError{
-				Field:   "speech.format",
-				Message: fmt.Sprintf("format must be ElevenLabs format (codec_samplerate_bitrate), got '%s'. See: https://elevenlabs.io/docs/api-reference/text-to-speech/convert", c.Speech.Format),
-			})
-		}
-	}
-	
-	return errors
-}
 
 // validatePrompt checks prompt configuration
 func (c *Config) validatePrompt() []ValidationError {
 	var errors []ValidationError
-	
+
 	if strings.TrimSpace(c.Prompt.Template) == "" {
 		errors = append(errors, ValidationError{
 			Field:   "prompt.template",
 			Message: "prompt template is required",
 		})
 	}
-	
+
 	return errors
 }
 
 // validateClaude checks Claude configuration
 func (c *Config) validateClaude() []ValidationError {
 	var errors []ValidationError
-	
+
 	// Validate model
 	if strings.TrimSpace(c.Claude.Model) == "" {
 		errors = append(errors, ValidationError{
@@ -393,7 +399,7 @@ func (c *Config) validateClaude() []ValidationError {
 			Message: "Claude model is required (e.g., claude-3-5-sonnet-20241022)",
 		})
 	}
-	
+
 	// Validate max tokens
 	if c.Claude.MaxTokens < 100 || c.Claude.MaxTokens > 4096 {
 		errors = append(errors, ValidationError{
@@ -401,7 +407,7 @@ func (c *Config) validateClaude() []ValidationError {
 			Message: fmt.Sprintf("max_tokens must be between 100 and 4096, got %d", c.Claude.MaxTokens),
 		})
 	}
-	
+
 	// Validate temperature
 	if c.Claude.Temperature < 0 || c.Claude.Temperature > 1 {
 		errors = append(errors, ValidationError{
@@ -409,7 +415,95 @@ func (c *Config) validateClaude() []ValidationError {
 			Message: fmt.Sprintf("temperature must be between 0 and 1, got %.2f", c.Claude.Temperature),
 		})
 	}
-	
+
+	return errors
+}
+
+// validateElevenLabs checks ElevenLabs configuration
+func (c *Config) validateElevenLabs() []ValidationError {
+	var errors []ValidationError
+
+	// Validate voice ID
+	if strings.TrimSpace(c.ElevenLabs.VoiceID) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.voice_id",
+			Message: "ElevenLabs voice ID is required",
+		})
+	}
+
+	// Validate model
+	if strings.TrimSpace(c.ElevenLabs.Model) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.model",
+			Message: "ElevenLabs model is required (e.g., eleven_multilingual_v1)",
+		})
+	}
+
+	// Validate stability (0.0-1.0)
+	if c.ElevenLabs.Stability < 0 || c.ElevenLabs.Stability > 1 {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.stability",
+			Message: fmt.Sprintf("stability must be between 0.0 and 1.0, got %.2f", c.ElevenLabs.Stability),
+		})
+	}
+
+	// Validate similarity (0.0-1.0)
+	if c.ElevenLabs.Similarity < 0 || c.ElevenLabs.Similarity > 1 {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.similarity",
+			Message: fmt.Sprintf("similarity must be between 0.0 and 1.0, got %.2f", c.ElevenLabs.Similarity),
+		})
+	}
+
+	// Validate style (0.0-1.0)
+	if c.ElevenLabs.Style < 0 || c.ElevenLabs.Style > 1 {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.style",
+			Message: fmt.Sprintf("style must be between 0.0 and 1.0, got %.2f", c.ElevenLabs.Style),
+		})
+	}
+
+	// Validate speed (0.25-4.0)
+	if c.ElevenLabs.Speed < 0.25 || c.ElevenLabs.Speed > 4.0 {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.speed",
+			Message: fmt.Sprintf("speed must be between 0.25 and 4.0, got %.2f", c.ElevenLabs.Speed),
+		})
+	}
+
+	// Validate format (ElevenLabs format: codec_samplerate_bitrate)
+	format := strings.TrimSpace(c.ElevenLabs.Format)
+	if format == "" {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.format",
+			Message: "audio format is required (ElevenLabs format: codec_samplerate_bitrate, e.g., mp3_44100_128)",
+		})
+	} else {
+		// Basic validation for ElevenLabs format pattern
+		if !isValidElevenLabsFormat(format) {
+			errors = append(errors, ValidationError{
+				Field:   "elevenlabs.format",
+				Message: fmt.Sprintf("format must be ElevenLabs format (codec_samplerate_bitrate), got '%s'. See: https://elevenlabs.io/docs/api-reference/text-to-speech/convert", c.ElevenLabs.Format),
+			})
+		}
+	}
+
+	// Validate retry settings
+	if c.ElevenLabs.MaxRetries < 0 || c.ElevenLabs.MaxRetries > 10 {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.max_retries",
+			Message: fmt.Sprintf("max_retries must be between 0 and 10, got %d", c.ElevenLabs.MaxRetries),
+		})
+	}
+
+	// Validate rate limit
+	if c.ElevenLabs.RateLimit < 1 || c.ElevenLabs.RateLimit > 100 {
+		errors = append(errors, ValidationError{
+			Field:   "elevenlabs.rate_limit",
+			Message: fmt.Sprintf("rate_limit must be between 1 and 100 requests per minute, got %d", c.ElevenLabs.RateLimit),
+		})
+	}
+
 	return errors
 }
 
@@ -424,6 +518,9 @@ openweather = "your-openweather-api-key-here"
 
 # Get your Anthropic API key at: https://console.anthropic.com/
 anthropic = "your-anthropic-api-key-here"
+
+# Get your ElevenLabs API key at: https://elevenlabs.io/
+elevenlabs = "your-elevenlabs-api-key-here"
 
 [weather]
 # Coordinates for your location (example: San Francisco)
@@ -440,17 +537,6 @@ temp_directory = "/tmp/myrcast"
 # Directory where Myriad should import generated content
 import_path = "/Users/username/Documents/Myrcast"
 
-[speech]
-# Voice ID for ElevenLabs (any voice name or ID)
-voice = "alloy"
-
-# Speech speed (0.1 to 4.0)
-speed = 1.0
-
-# Audio format: ElevenLabs format (codec_samplerate_bitrate)
-# Examples: mp3_44100_128, pcm_16000, ulaw_8000
-format = "mp3_44100_128"
-
 [prompt]
 # Template for AI weather report generation
 template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
@@ -464,6 +550,38 @@ max_tokens = 1000
 
 # Temperature for response generation (0-1, higher = more creative)
 temperature = 0.7
+
+[elevenlabs]
+# Voice ID from ElevenLabs (find at https://elevenlabs.io/voice-library)
+voice_id = "pNInz6obpgDQGcFmaJgB"
+
+# Voice model to use
+model = "eleven_multilingual_v1"
+
+# Voice stability (0.0-1.0, higher = more stable/consistent)
+stability = 0.5
+
+# Similarity boost (0.0-1.0, higher = more similar to original voice)
+similarity = 0.8
+
+# Style exaggeration (0.0-1.0, higher = more expressive)
+style = 0.0
+
+# Speaking speed (0.25-4.0, higher = faster speech)
+# 1.0 is normal speed, 0.5 is half speed, 2.0 is double speed
+speed = 1.0
+
+# Audio format: ElevenLabs format (codec_samplerate_bitrate)
+# Examples: mp3_44100_128, pcm_16000, ulaw_8000
+format = "mp3_44100_128"
+
+# Retry settings for API failures
+max_retries = 3
+base_delay_ms = 1000
+max_delay_ms = 30000
+
+# Rate limiting (requests per minute)
+rate_limit = 20
 `
 
 	// Create directory if it doesn't exist
@@ -484,21 +602,21 @@ temperature = 0.7
 func isValidElevenLabsFormat(format string) bool {
 	// ElevenLabs format pattern: codec_samplerate_bitrate
 	// Examples: mp3_44100_128, pcm_16000, ulaw_8000
-	
+
 	// Common valid formats based on ElevenLabs documentation
 	validFormats := []string{
 		"mp3_44100_128", "mp3_44100_192", "mp3_44100_64",
 		"pcm_16000", "pcm_22050", "pcm_24000", "pcm_44100",
 		"ulaw_8000",
 	}
-	
+
 	// Check exact matches first
 	for _, valid := range validFormats {
 		if format == valid {
 			return true
 		}
 	}
-	
+
 	// Basic pattern validation for unknown formats
 	// Pattern: word_digits or word_digits_digits
 	pattern := regexp.MustCompile(`^[a-z]+_\d+(_\d+)?$`)

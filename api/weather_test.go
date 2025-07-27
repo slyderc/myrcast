@@ -13,7 +13,7 @@ import (
 const (
 	// Test API key - replace with actual key for integration tests
 	testAPIKey = "ccaedd0261a89cc75e0650b2d64dd71f"
-	
+
 	// Test coordinates (San Francisco)
 	testLatitude  = 37.7749
 	testLongitude = -122.4194
@@ -21,15 +21,15 @@ const (
 
 func TestNewWeatherClient(t *testing.T) {
 	client := NewWeatherClient(testAPIKey)
-	
+
 	if client == nil {
 		t.Fatal("Expected non-nil weather client")
 	}
-	
+
 	if client.apiKey != testAPIKey {
 		t.Errorf("Expected API key %s, got %s", testAPIKey, client.apiKey)
 	}
-	
+
 	if client.client == nil {
 		t.Fatal("Expected non-nil HTTP client")
 	}
@@ -37,15 +37,15 @@ func TestNewWeatherClient(t *testing.T) {
 
 func TestNewWeatherClientWithRateLimit(t *testing.T) {
 	client := NewWeatherClientWithRateLimit(testAPIKey)
-	
+
 	if client == nil {
 		t.Fatal("Expected non-nil weather client with rate limit")
 	}
-	
+
 	if client.WeatherClient == nil {
 		t.Fatal("Expected embedded weather client")
 	}
-	
+
 	if client.rateLimiter == nil {
 		t.Fatal("Expected non-nil rate limiter")
 	}
@@ -101,7 +101,7 @@ func TestConvertTemperature(t *testing.T) {
 			delta:    0.1,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ConvertTemperature(tt.temp, tt.fromUnit, tt.toUnit)
@@ -146,7 +146,7 @@ func TestConvertWindSpeed(t *testing.T) {
 			delta:    0.1,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ConvertWindSpeed(tt.speed, tt.fromUnit, tt.toUnit)
@@ -183,7 +183,7 @@ func TestConvertPressure(t *testing.T) {
 			delta:    1,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ConvertPressure(tt.pressure, tt.fromUnit, tt.toUnit)
@@ -209,7 +209,7 @@ func TestGetUnitSuffix(t *testing.T) {
 		{"pressure", "metric", "hPa"},
 		{"precipitation", "metric", "mm"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s_%s", tt.measurement, tt.units), func(t *testing.T) {
 			result := GetUnitSuffix(tt.measurement, tt.units)
@@ -235,7 +235,7 @@ func TestDegreesToCardinal(t *testing.T) {
 		{315, "NW"},
 		{360, "N"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%.0f_degrees", tt.degrees), func(t *testing.T) {
 			result := degreesToCardinal(tt.degrees)
@@ -253,22 +253,22 @@ func TestFormatWindConditions(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "Calm wind",
-			wind: WindData{Speed: 0, Deg: 0, Gust: 0},
+			name:     "Calm wind",
+			wind:     WindData{Speed: 0, Deg: 0, Gust: 0},
 			expected: "Calm",
 		},
 		{
-			name: "Light wind",
-			wind: WindData{Speed: 1.5, Deg: 90, Gust: 0},
+			name:     "Light wind",
+			wind:     WindData{Speed: 1.5, Deg: 90, Gust: 0},
 			expected: "Light E winds at 1.5",
 		},
 		{
-			name: "Wind with gusts",
-			wind: WindData{Speed: 10, Deg: 270, Gust: 18},
+			name:     "Wind with gusts",
+			wind:     WindData{Speed: 10, Deg: 270, Gust: 18},
 			expected: "Moderate W winds at 10.0 (gusts to 18.0)",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := formatWindConditions(tt.wind)
@@ -292,7 +292,7 @@ func TestIsNotableWeatherCondition(t *testing.T) {
 		{"Fog", true},
 		{"Tornado", true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.condition, func(t *testing.T) {
 			result := isNotableWeatherCondition(tt.condition)
@@ -357,7 +357,7 @@ func TestValidateForecastParams(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateForecastParams(tt.params)
@@ -372,7 +372,7 @@ func TestRateLimiter(t *testing.T) {
 	// Test rate limiter with small limits for quick testing
 	rl := NewRateLimiter(2, time.Second)
 	ctx := context.Background()
-	
+
 	// First two requests should pass immediately
 	start := time.Now()
 	if err := rl.Wait(ctx); err != nil {
@@ -381,12 +381,12 @@ func TestRateLimiter(t *testing.T) {
 	if err := rl.Wait(ctx); err != nil {
 		t.Errorf("Second request failed: %v", err)
 	}
-	
+
 	// Third request should be delayed
 	if err := rl.Wait(ctx); err != nil {
 		t.Errorf("Third request failed: %v", err)
 	}
-	
+
 	elapsed := time.Since(start)
 	if elapsed < time.Second {
 		t.Errorf("Expected rate limiting delay, but elapsed time was %v", elapsed)
@@ -398,46 +398,46 @@ func TestGetForecastIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	client := NewWeatherClient(testAPIKey)
-	
+
 	params := ForecastParams{
 		Latitude:  testLatitude,
 		Longitude: testLongitude,
 		Units:     "metric",
 		Count:     5,
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	forecast, err := client.GetForecast(ctx, params)
 	if err != nil {
 		t.Fatalf("GetForecast failed: %v", err)
 	}
-	
+
 	if forecast == nil {
 		t.Fatal("Expected non-nil forecast")
 	}
-	
+
 	if len(forecast.List) == 0 {
 		t.Fatal("Expected forecast entries")
 	}
-	
+
 	if forecast.City.Name == "" {
 		t.Error("Expected city name in forecast")
 	}
-	
+
 	// Validate first forecast entry
 	entry := forecast.List[0]
 	if entry.Main.Temp == 0 {
 		t.Error("Expected non-zero temperature")
 	}
-	
+
 	if len(entry.Weather) == 0 {
 		t.Error("Expected weather conditions")
 	}
-	
+
 	t.Logf("Successfully retrieved forecast for %s, %s", forecast.City.Name, forecast.City.Country)
 	t.Logf("First entry: %.1f°C, %s", entry.Main.Temp, entry.Weather[0].Description)
 }
@@ -447,48 +447,48 @@ func TestExtractTodayWeatherIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	client := NewWeatherClient(testAPIKey)
-	
+
 	params := ForecastParams{
 		Latitude:  testLatitude,
 		Longitude: testLongitude,
 		Units:     "metric",
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	forecast, err := client.GetForecast(ctx, params)
 	if err != nil {
 		t.Fatalf("GetForecast failed: %v", err)
 	}
-	
+
 	todayData, err := client.ExtractTodayWeather(forecast)
 	if err != nil {
 		t.Fatalf("ExtractTodayWeather failed: %v", err)
 	}
-	
+
 	if todayData == nil {
 		t.Fatal("Expected non-nil today weather data")
 	}
-	
+
 	if todayData.Location == "" {
 		t.Error("Expected location name")
 	}
-	
+
 	if todayData.CurrentConditions == "" {
 		t.Error("Expected current conditions")
 	}
-	
+
 	if todayData.WindConditions == "" {
 		t.Error("Expected wind conditions")
 	}
-	
+
 	if todayData.TempHigh == 0 && todayData.TempLow == 0 {
 		t.Error("Expected non-zero temperature values")
 	}
-	
+
 	t.Logf("Today's weather for %s:", todayData.Location)
 	t.Logf("  Temperature: %.1f°C (high) / %.1f°C (low)", todayData.TempHigh, todayData.TempLow)
 	t.Logf("  Current: %.1f°C, %s", todayData.CurrentTemp, todayData.CurrentConditions)
@@ -504,32 +504,32 @@ func TestWeatherClientWithRateLimitIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	client := NewWeatherClientWithRateLimit(testAPIKey)
-	
+
 	params := ForecastParams{
 		Latitude:  testLatitude,
 		Longitude: testLongitude,
 		Units:     "imperial", // Test different units
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	
+
 	todayData, err := client.GetTodayWeatherWithFallback(ctx, params, "metric")
 	if err != nil {
 		t.Fatalf("GetTodayWeatherWithFallback failed: %v", err)
 	}
-	
+
 	if todayData == nil {
 		t.Fatal("Expected non-nil today weather data")
 	}
-	
+
 	// Verify unit conversion worked
 	if todayData.Units != "metric" {
 		t.Errorf("Expected metric units after conversion, got %s", todayData.Units)
 	}
-	
+
 	t.Logf("Weather with unit conversion (imperial -> metric):")
 	t.Logf("  %s: %.1f°C / %.1f°C", todayData.Location, todayData.TempHigh, todayData.TempLow)
 	t.Logf("  %s, %.0f%% rain chance", todayData.CurrentConditions, todayData.RainChance)
@@ -537,40 +537,40 @@ func TestWeatherClientWithRateLimitIntegration(t *testing.T) {
 
 func TestConvertWeatherData(t *testing.T) {
 	client := NewWeatherClient(testAPIKey)
-	
+
 	originalData := &TodayWeatherData{
-		TempHigh:         80, // 80°F
-		TempLow:          60, // 60°F
-		CurrentTemp:      70, // 70°F
+		TempHigh:          80, // 80°F
+		TempLow:           60, // 60°F
+		CurrentTemp:       70, // 70°F
 		CurrentConditions: "Sunny",
-		RainChance:       20,
-		WindConditions:   "Light NW winds at 10.0",
-		WeatherAlerts:    []string{},
-		LastUpdated:      time.Now(),
-		Units:            "imperial",
-		Location:         "Test City",
+		RainChance:        20,
+		WindConditions:    "Light NW winds at 10.0",
+		WeatherAlerts:     []string{},
+		LastUpdated:       time.Now(),
+		Units:             "imperial",
+		Location:          "Test City",
 	}
-	
+
 	converted := client.ConvertWeatherData(originalData, "metric")
-	
+
 	if converted == nil {
 		t.Fatal("Expected non-nil converted data")
 	}
-	
+
 	if converted.Units != "metric" {
 		t.Errorf("Expected metric units, got %s", converted.Units)
 	}
-	
+
 	// Verify temperature conversion (80°F ≈ 26.7°C)
 	if math.Abs(converted.TempHigh-26.67) > 0.1 {
 		t.Errorf("Expected ~26.7°C, got %.2f°C", converted.TempHigh)
 	}
-	
+
 	// Verify other fields unchanged
 	if converted.CurrentConditions != originalData.CurrentConditions {
 		t.Error("Current conditions should remain unchanged")
 	}
-	
+
 	if converted.RainChance != originalData.RainChance {
 		t.Error("Rain chance should remain unchanged")
 	}
@@ -583,7 +583,7 @@ func BenchmarkExtractTodayWeather(b *testing.B) {
 		List: make([]ForecastItem, 40),
 		City: CityInfo{Name: "Test City", Country: "US"},
 	}
-	
+
 	now := time.Now()
 	for i := range mockForecast.List {
 		mockForecast.List[i] = ForecastItem{
@@ -598,9 +598,9 @@ func BenchmarkExtractTodayWeather(b *testing.B) {
 			Pop:     0.1,
 		}
 	}
-	
+
 	client := NewWeatherClient("test-key")
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := client.ExtractTodayWeather(mockForecast)

@@ -17,10 +17,10 @@ const (
 	// OpenWeather API base URL and endpoints
 	openWeatherBaseURL = "https://api.openweathermap.org/data/2.5"
 	forecastEndpoint   = "/forecast"
-	
+
 	// Default timeout for API requests
 	defaultTimeout = 10 * time.Second
-	
+
 	// User-Agent for API requests
 	userAgent = "Myrcast/1.0"
 )
@@ -41,7 +41,7 @@ func NewWeatherClient(apiKey string) *WeatherClient {
 		SetRetryCount(3).
 		SetRetryWaitTime(1 * time.Second).
 		SetRetryMaxWaitTime(5 * time.Second)
-	
+
 	// Add debug logging for development
 	client.OnBeforeRequest(func(c *resty.Client, req *resty.Request) error {
 		// Convert http.Header to map[string]string for logging
@@ -54,14 +54,14 @@ func NewWeatherClient(apiKey string) *WeatherClient {
 		logger.LogAPIRequest(req.Method, req.URL, headers)
 		return nil
 	})
-	
+
 	client.OnAfterResponse(func(c *resty.Client, resp *resty.Response) error {
 		duration := resp.Time().String()
 		bodySize := len(resp.Body())
 		logger.LogAPIResponse(resp.Request.Method, resp.Request.URL, resp.StatusCode(), duration, bodySize)
 		return nil
 	})
-	
+
 	return &WeatherClient{
 		client: client,
 		apiKey: apiKey,
@@ -97,7 +97,7 @@ func (w *WeatherClient) GetForecast(ctx context.Context, params ForecastParams) 
 		"longitude": params.Longitude,
 		"units":     params.Units,
 	})
-	
+
 	// Build query parameters for the API request
 	queryParams := map[string]interface{}{
 		"lat":   params.Latitude,
@@ -105,33 +105,33 @@ func (w *WeatherClient) GetForecast(ctx context.Context, params ForecastParams) 
 		"appid": w.apiKey,
 		"units": params.Units,
 	}
-	
+
 	// Add optional count parameter if specified (max 40 for free tier)
 	if params.Count > 0 && params.Count <= 40 {
 		queryParams["cnt"] = params.Count
 	}
-	
+
 	var forecastResp ForecastResponse
-	
+
 	// Execute the HTTP request with context for cancellation
 	resp, err := w.client.R().
 		SetContext(ctx).
 		SetQueryParams(convertToStringMap(queryParams)).
 		SetResult(&forecastResp).
 		Get(forecastEndpoint)
-	
+
 	if err != nil {
 		complete(fmt.Errorf("HTTP request failed: %w", err))
 		return nil, fmt.Errorf("failed to fetch weather forecast: %w", err)
 	}
-	
+
 	// Check for HTTP error status codes
 	if !resp.IsSuccess() {
 		apiErr := parseOpenWeatherError(resp)
 		complete(apiErr)
 		return nil, apiErr
 	}
-	
+
 	complete(nil)
 	return &forecastResp, nil
 }
@@ -148,13 +148,13 @@ func convertToStringMap(input map[string]interface{}) map[string]string {
 // parseOpenWeatherError creates appropriate error from API response
 func parseOpenWeatherError(resp *resty.Response) error {
 	statusCode := resp.StatusCode()
-	
+
 	// Try to parse error response if JSON
 	var apiError struct {
 		Cod     int    `json:"cod"`
 		Message string `json:"message"`
 	}
-	
+
 	if err := json.Unmarshal(resp.Body(), &apiError); err == nil && apiError.Message != "" {
 		return &OpenWeatherAPIError{
 			StatusCode: statusCode,
@@ -162,7 +162,7 @@ func parseOpenWeatherError(resp *resty.Response) error {
 			Message:    apiError.Message,
 		}
 	}
-	
+
 	// Fallback to status-based error messages
 	switch statusCode {
 	case 401:
@@ -214,17 +214,17 @@ type ForecastResponse struct {
 
 // ForecastItem represents a single forecast entry (typically 3-hour intervals)
 type ForecastItem struct {
-	Dt         int64               `json:"dt"`         // Unix timestamp
-	Main       MainWeatherData     `json:"main"`       // Temperature, pressure, humidity data
-	Weather    []WeatherCondition  `json:"weather"`    // Weather conditions array
-	Clouds     CloudData           `json:"clouds"`     // Cloud coverage data
-	Wind       WindData            `json:"wind"`       // Wind data
-	Visibility int                 `json:"visibility"` // Visibility in meters
-	Pop        float64             `json:"pop"`        // Probability of precipitation (0-1)
-	Rain       *PrecipitationData  `json:"rain,omitempty"`   // Rain data (if present)
-	Snow       *PrecipitationData  `json:"snow,omitempty"`   // Snow data (if present)
-	Sys        SystemData          `json:"sys"`        // System data
-	DtTxt      string              `json:"dt_txt"`     // Forecast time as string
+	Dt         int64              `json:"dt"`             // Unix timestamp
+	Main       MainWeatherData    `json:"main"`           // Temperature, pressure, humidity data
+	Weather    []WeatherCondition `json:"weather"`        // Weather conditions array
+	Clouds     CloudData          `json:"clouds"`         // Cloud coverage data
+	Wind       WindData           `json:"wind"`           // Wind data
+	Visibility int                `json:"visibility"`     // Visibility in meters
+	Pop        float64            `json:"pop"`            // Probability of precipitation (0-1)
+	Rain       *PrecipitationData `json:"rain,omitempty"` // Rain data (if present)
+	Snow       *PrecipitationData `json:"snow,omitempty"` // Snow data (if present)
+	Sys        SystemData         `json:"sys"`            // System data
+	DtTxt      string             `json:"dt_txt"`         // Forecast time as string
 }
 
 // MainWeatherData contains temperature, pressure, and humidity information
@@ -291,16 +291,16 @@ type Coordinates struct {
 
 // TodayWeatherData contains processed weather data for the current day
 type TodayWeatherData struct {
-	TempHigh         float64   `json:"temp_high"`         // Highest temperature today
-	TempLow          float64   `json:"temp_low"`          // Lowest temperature today
-	CurrentTemp      float64   `json:"current_temp"`      // Current temperature (closest to now)
-	CurrentConditions string   `json:"current_conditions"` // Current weather description
-	RainChance       float64   `json:"rain_chance"`       // Maximum precipitation probability
-	WindConditions   string    `json:"wind_conditions"`   // Wind speed and direction description
-	WeatherAlerts    []string  `json:"weather_alerts"`    // Notable weather conditions
-	LastUpdated      time.Time `json:"last_updated"`      // When data was processed
-	Units            string    `json:"units"`             // Unit system used
-	Location         string    `json:"location"`          // Location name
+	TempHigh          float64   `json:"temp_high"`          // Highest temperature today
+	TempLow           float64   `json:"temp_low"`           // Lowest temperature today
+	CurrentTemp       float64   `json:"current_temp"`       // Current temperature (closest to now)
+	CurrentConditions string    `json:"current_conditions"` // Current weather description
+	RainChance        float64   `json:"rain_chance"`        // Maximum precipitation probability
+	WindConditions    string    `json:"wind_conditions"`    // Wind speed and direction description
+	WeatherAlerts     []string  `json:"weather_alerts"`     // Notable weather conditions
+	LastUpdated       time.Time `json:"last_updated"`       // When data was processed
+	Units             string    `json:"units"`              // Unit system used
+	Location          string    `json:"location"`           // Location name
 }
 
 // ExtractTodayWeather processes forecast data and extracts today's weather information
@@ -308,29 +308,29 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 	if forecast == nil || len(forecast.List) == 0 {
 		return nil, fmt.Errorf("empty forecast data")
 	}
-	
+
 	complete := logger.LogOperationStart("weather_data_extraction", map[string]any{
 		"forecast_entries": len(forecast.List),
-		"city":            forecast.City.Name,
+		"city":             forecast.City.Name,
 	})
-	
+
 	// Get today's date in UTC (OpenWeather uses UTC timestamps)
 	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	todayEnd := todayStart.Add(24 * time.Hour)
-	
+
 	var todayEntries []ForecastItem
 	var currentEntry *ForecastItem
 	var closestToNow int64 = 999999999999 // Large number for comparison
-	
+
 	// Filter forecast entries for today only
 	for _, entry := range forecast.List {
 		entryTime := time.Unix(entry.Dt, 0).UTC()
-		
+
 		// Check if this entry is for today
 		if entryTime.After(todayStart) && entryTime.Before(todayEnd) {
 			todayEntries = append(todayEntries, entry)
-			
+
 			// Find entry closest to current time for "current" conditions
 			timeDiff := abs(entry.Dt - now.Unix())
 			if timeDiff < closestToNow {
@@ -339,20 +339,20 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 			}
 		}
 	}
-	
+
 	if len(todayEntries) == 0 {
 		complete(fmt.Errorf("no forecast data found for today"))
 		return nil, fmt.Errorf("no forecast data available for today")
 	}
-	
+
 	// Calculate temperature highs and lows for today
 	tempHigh := todayEntries[0].Main.TempMax
 	tempLow := todayEntries[0].Main.TempMin
 	maxRainChance := todayEntries[0].Pop
-	
+
 	var weatherAlerts []string
 	alertSet := make(map[string]bool) // To avoid duplicate alerts
-	
+
 	for _, entry := range todayEntries {
 		// Track temperature extremes
 		if entry.Main.TempMax > tempHigh {
@@ -361,12 +361,12 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 		if entry.Main.TempMin < tempLow {
 			tempLow = entry.Main.TempMin
 		}
-		
+
 		// Track maximum precipitation probability
 		if entry.Pop > maxRainChance {
 			maxRainChance = entry.Pop
 		}
-		
+
 		// Collect weather alerts for notable conditions
 		for _, condition := range entry.Weather {
 			if isNotableWeatherCondition(condition.Main) && !alertSet[condition.Description] {
@@ -375,7 +375,7 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 			}
 		}
 	}
-	
+
 	// Get current conditions
 	currentConditions := "Clear"
 	currentTemp := tempHigh // Fallback to high temp
@@ -385,44 +385,44 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 			currentConditions = currentEntry.Weather[0].Description
 		}
 	}
-	
+
 	// Format wind conditions from current entry
 	windConditions := "Calm"
 	if currentEntry != nil {
 		windConditions = formatWindConditions(currentEntry.Wind)
 	}
-	
+
 	// Determine unit system from temperature values (rough heuristic)
-	units := "metric" // Default
+	units := "metric"  // Default
 	if tempHigh > 50 { // Likely Fahrenheit if over 50
 		units = "imperial"
 	} else if tempHigh > 300 { // Likely Kelvin if over 300
 		units = "kelvin"
 	}
-	
+
 	result := &TodayWeatherData{
-		TempHigh:         tempHigh,
-		TempLow:          tempLow,
-		CurrentTemp:      currentTemp,
+		TempHigh:          tempHigh,
+		TempLow:           tempLow,
+		CurrentTemp:       currentTemp,
 		CurrentConditions: currentConditions,
-		RainChance:       maxRainChance, // Keep as decimal (0-1)
-		WindConditions:   windConditions,
-		WeatherAlerts:    weatherAlerts,
-		LastUpdated:      time.Now(),
-		Units:            units,
-		Location:         fmt.Sprintf("%s, %s", forecast.City.Name, forecast.City.Country),
+		RainChance:        maxRainChance, // Keep as decimal (0-1)
+		WindConditions:    windConditions,
+		WeatherAlerts:     weatherAlerts,
+		LastUpdated:       time.Now(),
+		Units:             units,
+		Location:          fmt.Sprintf("%s, %s", forecast.City.Name, forecast.City.Country),
 	}
-	
+
 	complete(nil)
 	logger.LogWithFields(logger.InfoLevel, "Weather data extracted successfully", map[string]any{
-		"location":       result.Location,
-		"temp_high":      result.TempHigh,
-		"temp_low":       result.TempLow,
-		"current_temp":   result.CurrentTemp,
-		"rain_chance":    result.RainChance,
-		"alerts_count":   len(result.WeatherAlerts),
+		"location":     result.Location,
+		"temp_high":    result.TempHigh,
+		"temp_low":     result.TempLow,
+		"current_temp": result.CurrentTemp,
+		"rain_chance":  result.RainChance,
+		"alerts_count": len(result.WeatherAlerts),
 	})
-	
+
 	return result, nil
 }
 
@@ -450,7 +450,7 @@ func isNotableWeatherCondition(condition string) bool {
 		"Squall":       true,
 		"Tornado":      true,
 	}
-	
+
 	return notableConditions[condition]
 }
 
@@ -459,10 +459,10 @@ func formatWindConditions(wind WindData) string {
 	if wind.Speed == 0 {
 		return "Calm"
 	}
-	
+
 	// Convert wind direction degrees to cardinal direction
 	direction := degreesToCardinal(wind.Deg)
-	
+
 	// Describe wind speed (these thresholds work for both m/s and mph roughly)
 	var speedDesc string
 	switch {
@@ -479,14 +479,14 @@ func formatWindConditions(wind WindData) string {
 	default:
 		speedDesc = "Very Strong"
 	}
-	
+
 	result := fmt.Sprintf("%s %s winds at %.1f", speedDesc, direction, wind.Speed)
-	
+
 	// Add gust information if significant
 	if wind.Gust > wind.Speed*1.5 {
 		result += fmt.Sprintf(" (gusts to %.1f)", wind.Gust)
 	}
-	
+
 	return result
 }
 
@@ -494,16 +494,16 @@ func formatWindConditions(wind WindData) string {
 func degreesToCardinal(degrees float64) string {
 	// Normalize degrees to 0-360 range
 	degrees = float64(int(degrees+360) % 360)
-	
+
 	directions := []string{
 		"N", "NNE", "NE", "ENE",
-		"E", "ESE", "SE", "SSE", 
+		"E", "ESE", "SE", "SSE",
 		"S", "SSW", "SW", "WSW",
 		"W", "WNW", "NW", "NNW",
 	}
-	
+
 	// Each direction covers 22.5 degrees
-	index := int((degrees + 11.25) / 22.5) % 16
+	index := int((degrees+11.25)/22.5) % 16
 	return directions[index]
 }
 
@@ -513,7 +513,7 @@ func ConvertTemperature(temp float64, fromUnit, toUnit string) float64 {
 	if fromUnit == toUnit {
 		return temp
 	}
-	
+
 	// First convert to Celsius as intermediate
 	var tempC float64
 	switch strings.ToLower(fromUnit) {
@@ -524,7 +524,7 @@ func ConvertTemperature(temp float64, fromUnit, toUnit string) float64 {
 	default:
 		tempC = temp // Assume Celsius
 	}
-	
+
 	// Then convert from Celsius to target unit
 	switch strings.ToLower(toUnit) {
 	case "fahrenheit", "imperial":
@@ -542,7 +542,7 @@ func ConvertWindSpeed(speed float64, fromUnit, toUnit string) float64 {
 	if fromUnit == toUnit {
 		return speed
 	}
-	
+
 	// First convert to m/s as intermediate
 	var speedMS float64
 	switch strings.ToLower(fromUnit) {
@@ -553,7 +553,7 @@ func ConvertWindSpeed(speed float64, fromUnit, toUnit string) float64 {
 	default:
 		speedMS = speed // Assume m/s
 	}
-	
+
 	// Then convert from m/s to target unit
 	switch strings.ToLower(toUnit) {
 	case "mph", "imperial":
@@ -571,7 +571,7 @@ func ConvertPressure(pressure float64, fromUnit, toUnit string) float64 {
 	if fromUnit == toUnit {
 		return pressure
 	}
-	
+
 	// First convert to hPa as intermediate
 	var pressureHPa float64
 	switch strings.ToLower(fromUnit) {
@@ -582,7 +582,7 @@ func ConvertPressure(pressure float64, fromUnit, toUnit string) float64 {
 	default:
 		pressureHPa = pressure // Assume hPa
 	}
-	
+
 	// Then convert from hPa to target unit
 	switch strings.ToLower(toUnit) {
 	case "inhg", "inches":
@@ -599,23 +599,23 @@ func (w *WeatherClient) ConvertWeatherData(data *TodayWeatherData, targetUnits s
 	if data == nil || data.Units == targetUnits {
 		return data
 	}
-	
+
 	// AIDEV-NOTE: Deep copy to avoid modifying original data
 	converted := &TodayWeatherData{
-		TempHigh:         ConvertTemperature(data.TempHigh, data.Units, targetUnits),
-		TempLow:          ConvertTemperature(data.TempLow, data.Units, targetUnits),
-		CurrentTemp:      ConvertTemperature(data.CurrentTemp, data.Units, targetUnits),
+		TempHigh:          ConvertTemperature(data.TempHigh, data.Units, targetUnits),
+		TempLow:           ConvertTemperature(data.TempLow, data.Units, targetUnits),
+		CurrentTemp:       ConvertTemperature(data.CurrentTemp, data.Units, targetUnits),
 		CurrentConditions: data.CurrentConditions,
-		RainChance:       data.RainChance, // Percentage stays the same
-		WeatherAlerts:    append([]string{}, data.WeatherAlerts...), // Copy slice
-		LastUpdated:      data.LastUpdated,
-		Units:            targetUnits,
-		Location:         data.Location,
+		RainChance:        data.RainChance,                           // Percentage stays the same
+		WeatherAlerts:     append([]string{}, data.WeatherAlerts...), // Copy slice
+		LastUpdated:       data.LastUpdated,
+		Units:             targetUnits,
+		Location:          data.Location,
 	}
-	
+
 	// Convert wind conditions description if it contains numerical values
 	converted.WindConditions = convertWindInDescription(data.WindConditions, data.Units, targetUnits)
-	
+
 	return converted
 }
 
@@ -624,26 +624,26 @@ func convertWindInDescription(windDesc, fromUnits, toUnits string) string {
 	if fromUnits == toUnits {
 		return windDesc
 	}
-	
+
 	// Simple approach: find numerical patterns and convert them
 	// This handles the format from formatWindConditions function
 	// Example: "Moderate NW winds at 15.0 (gusts to 22.0)"
-	
+
 	// Use regex to find numerical values that represent wind speeds
 	re := regexp.MustCompile(`(\d+\.?\d*)\s*(?:\(gusts to (\d+\.?\d*)\))?`)
-	
+
 	return re.ReplaceAllStringFunc(windDesc, func(match string) string {
 		// Extract wind speed and gust values
 		submatches := re.FindStringSubmatch(match)
 		if len(submatches) < 2 {
 			return match
 		}
-		
+
 		// Convert main wind speed
 		if speed, err := strconv.ParseFloat(submatches[1], 64); err == nil {
 			convertedSpeed := ConvertWindSpeed(speed, fromUnits, toUnits)
 			result := fmt.Sprintf("%.1f", convertedSpeed)
-			
+
 			// Convert gust speed if present
 			if len(submatches) > 2 && submatches[2] != "" {
 				if gust, err := strconv.ParseFloat(submatches[2], 64); err == nil {
@@ -651,10 +651,10 @@ func convertWindInDescription(windDesc, fromUnits, toUnits string) string {
 					result += fmt.Sprintf(" (gusts to %.1f)", convertedGust)
 				}
 			}
-			
+
 			return result
 		}
-		
+
 		return match
 	})
 }
@@ -715,7 +715,7 @@ func NewRateLimiter(maxRequests int, window time.Duration) *RateLimiter {
 // Wait blocks until a request can be made according to rate limits
 func (rl *RateLimiter) Wait(ctx context.Context) error {
 	now := time.Now()
-	
+
 	// Remove requests outside the time window
 	cutoff := now.Add(-rl.window)
 	i := 0
@@ -723,18 +723,18 @@ func (rl *RateLimiter) Wait(ctx context.Context) error {
 		i++
 	}
 	rl.requests = rl.requests[i:]
-	
+
 	// Check if we can make a request
 	if len(rl.requests) < rl.maxRequests {
 		rl.requests = append(rl.requests, now)
 		return nil
 	}
-	
+
 	// Wait until we can make a request
 	sleepTime := rl.requests[0].Add(rl.window).Sub(now)
 	if sleepTime > 0 {
 		logger.Info("Rate limit reached, waiting %.2f seconds", sleepTime.Seconds())
-		
+
 		select {
 		case <-time.After(sleepTime):
 			rl.requests = append(rl.requests[1:], now)
@@ -743,7 +743,7 @@ func (rl *RateLimiter) Wait(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	
+
 	rl.requests = append(rl.requests, now)
 	return nil
 }
@@ -760,7 +760,7 @@ func NewWeatherClientWithRateLimit(apiKey string) *WeatherClientWithRateLimit {
 	client := NewWeatherClient(apiKey)
 	// Set conservative rate limit: 50 requests per minute to stay well under limit
 	rateLimiter := NewRateLimiter(50, time.Minute)
-	
+
 	return &WeatherClientWithRateLimit{
 		WeatherClient: client,
 		rateLimiter:   rateLimiter,
@@ -773,50 +773,50 @@ func (w *WeatherClientWithRateLimit) GetForecastWithRateLimit(ctx context.Contex
 	if err := w.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limiter cancelled: %w", err)
 	}
-	
+
 	// Validate input parameters before making request
 	if err := validateForecastParams(params); err != nil {
 		return nil, fmt.Errorf("invalid parameters: %w", err)
 	}
-	
+
 	// Use exponential backoff for retries
 	const maxRetries = 3
 	var lastErr error
-	
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
 			// Exponential backoff: 1s, 2s, 4s
 			backoffTime := time.Duration(1<<uint(attempt-1)) * time.Second
 			logger.Info("Retrying API request after %.1f seconds (attempt %d/%d)", backoffTime.Seconds(), attempt+1, maxRetries)
-			
+
 			select {
 			case <-time.After(backoffTime):
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
 		}
-		
+
 		forecast, err := w.WeatherClient.GetForecast(ctx, params)
 		if err != nil {
 			lastErr = err
-			
+
 			// Check if this is a retryable error
 			if !isRetryableError(err) {
 				logger.Error("Non-retryable error, not attempting retry: %v", err)
 				return nil, err
 			}
-			
+
 			logger.Warn("Retryable error on attempt %d: %v", attempt+1, err)
 			continue
 		}
-		
+
 		// Success
 		if attempt > 0 {
 			logger.Info("API request succeeded after %d retries", attempt)
 		}
 		return forecast, nil
 	}
-	
+
 	// All retries exhausted
 	logger.Error("API request failed after %d attempts, last error: %v", maxRetries, lastErr)
 	return nil, fmt.Errorf("API request failed after %d retries: %w", maxRetries, lastErr)
@@ -825,17 +825,17 @@ func (w *WeatherClientWithRateLimit) GetForecastWithRateLimit(ctx context.Contex
 // validateForecastParams validates input parameters for API requests
 func validateForecastParams(params ForecastParams) error {
 	var errors []string
-	
+
 	// Validate latitude range
 	if params.Latitude < -90 || params.Latitude > 90 {
 		errors = append(errors, fmt.Sprintf("latitude must be between -90 and 90, got %.6f", params.Latitude))
 	}
-	
+
 	// Validate longitude range
 	if params.Longitude < -180 || params.Longitude > 180 {
 		errors = append(errors, fmt.Sprintf("longitude must be between -180 and 180, got %.6f", params.Longitude))
 	}
-	
+
 	// Validate units
 	validUnits := map[string]bool{
 		"metric":   true,
@@ -845,16 +845,16 @@ func validateForecastParams(params ForecastParams) error {
 	if params.Units != "" && !validUnits[strings.ToLower(params.Units)] {
 		errors = append(errors, fmt.Sprintf("units must be one of: metric, imperial, kelvin, got '%s'", params.Units))
 	}
-	
+
 	// Validate count (OpenWeather API limit)
 	if params.Count > 0 && params.Count > 40 {
 		errors = append(errors, fmt.Sprintf("count cannot exceed 40, got %d", params.Count))
 	}
-	
+
 	if len(errors) > 0 {
 		return fmt.Errorf("validation failed: %s", strings.Join(errors, "; "))
 	}
-	
+
 	return nil
 }
 
@@ -863,7 +863,7 @@ func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	// Check for OpenWeather API specific errors
 	if apiErr, ok := err.(*OpenWeatherAPIError); ok {
 		switch apiErr.StatusCode {
@@ -879,7 +879,7 @@ func isRetryableError(err error) bool {
 			return false
 		}
 	}
-	
+
 	// Check for network-related errors (context cancelled, timeouts, etc.)
 	errorString := strings.ToLower(err.Error())
 	retryablePatterns := []string{
@@ -890,13 +890,13 @@ func isRetryableError(err error) bool {
 		"temporary failure",
 		"i/o timeout",
 	}
-	
+
 	for _, pattern := range retryablePatterns {
 		if strings.Contains(errorString, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -908,26 +908,26 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithFallback(ctx context.Con
 		"units":        params.Units,
 		"target_units": targetUnits,
 	})
-	
+
 	// Get forecast data with rate limiting and retries
 	forecast, err := w.GetForecastWithRateLimit(ctx, params)
 	if err != nil {
 		complete(fmt.Errorf("failed to fetch forecast: %w", err))
 		return nil, fmt.Errorf("unable to fetch weather forecast: %w", err)
 	}
-	
+
 	// Extract today's weather data
 	todayData, err := w.ExtractTodayWeather(forecast)
 	if err != nil {
 		complete(fmt.Errorf("failed to extract today's data: %w", err))
 		return nil, fmt.Errorf("unable to process weather data: %w", err)
 	}
-	
+
 	// Convert units if needed
 	if targetUnits != "" && targetUnits != todayData.Units {
 		todayData = w.ConvertWeatherData(todayData, targetUnits)
 	}
-	
+
 	complete(nil)
 	return todayData, nil
 }
