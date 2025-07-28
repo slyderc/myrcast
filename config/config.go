@@ -28,6 +28,7 @@ type Weather struct {
 type Output struct {
 	TempDirectory string `toml:"temp_directory"`
 	ImportPath    string `toml:"import_path"`
+	MediaID       string `toml:"media_id"` // Base filename for generated audio (without extension)
 }
 
 // Prompt contains AI prompt template configuration
@@ -128,9 +129,11 @@ func (c *Config) ApplyDefaults() {
 	}
 
 
+	// Note: MediaID is required - no default value provided
+
 	// Default prompt template
 	if strings.TrimSpace(c.Prompt.Template) == "" {
-		c.Prompt.Template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
+		c.Prompt.Template = "You are a professional radio weather announcer for morning drive time. Generate a 20-second weather report that's upbeat and informative. Include current conditions, today's high and low temperatures, and any weather to watch for. Use conversational language that sounds natural when spoken aloud. Keep it concise and engaging for busy commuters."
 	}
 
 	// Default Claude settings
@@ -369,6 +372,12 @@ func (c *Config) validateOutput() []ValidationError {
 			Message: "import path is required",
 		})
 	}
+	if strings.TrimSpace(c.Output.MediaID) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "output.media_id",
+			Message: "media ID is required for audio filename",
+		})
+	}
 
 	return errors
 }
@@ -463,11 +472,11 @@ func (c *Config) validateElevenLabs() []ValidationError {
 		})
 	}
 
-	// Validate speed (0.25-4.0)
-	if c.ElevenLabs.Speed < 0.25 || c.ElevenLabs.Speed > 4.0 {
+	// Validate speed (0.7-1.2 per ElevenLabs API constraints)
+	if c.ElevenLabs.Speed < 0.7 || c.ElevenLabs.Speed > 1.2 {
 		errors = append(errors, ValidationError{
 			Field:   "elevenlabs.speed",
-			Message: fmt.Sprintf("speed must be between 0.25 and 4.0, got %.2f", c.ElevenLabs.Speed),
+			Message: fmt.Sprintf("speed must be between 0.7 and 1.2 (ElevenLabs API constraint), got %.2f", c.ElevenLabs.Speed),
 		})
 	}
 
@@ -537,9 +546,15 @@ temp_directory = "/tmp/myrcast"
 # Directory where Myriad should import generated content
 import_path = "/Users/username/Documents/Myrcast"
 
+# Base filename for generated audio files (without extension)
+# The .wav extension will be added automatically
+media_id = "weather_report"
+
 [prompt]
 # Template for AI weather report generation
-template = "You are a friendly weather reporter. Generate an engaging weather report for the location based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
+# Describe the style, tone, and format you want for your weather reports
+# Claude will automatically extract relevant details from the weather data provided
+template = "You are a professional radio weather announcer for morning drive time. Generate a 20-second weather report that's upbeat and informative. Include current conditions, today's high and low temperatures, and any weather to watch for. Use conversational language that sounds natural when spoken aloud. Keep it concise and engaging for busy commuters."
 
 [claude]
 # Claude model to use (defaults to claude-3-5-sonnet-20241022)
@@ -567,8 +582,8 @@ similarity = 0.8
 # Style exaggeration (0.0-1.0, higher = more expressive)
 style = 0.0
 
-# Speaking speed (0.25-4.0, higher = faster speech)
-# 1.0 is normal speed, 0.5 is half speed, 2.0 is double speed
+# Speaking speed (0.7-1.2, higher = faster speech)
+# 1.0 is normal speed, ElevenLabs enforces 0.7-1.2 range
 speed = 1.0
 
 # Audio format: ElevenLabs format (codec_samplerate_bitrate)

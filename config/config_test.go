@@ -27,6 +27,7 @@ units = "imperial"
 [output]
 temp_directory = "/tmp/test"
 import_path = "/tmp/test/import"
+media_id = "test_report"
 
 [prompt]
 template = "Test weather report template"
@@ -136,6 +137,7 @@ units = "imperial"
 [output]
 temp_directory = "/tmp/test"
 import_path = "/tmp/test/import"
+media_id = "test_report"
 
 [prompt]
 template = "Test weather report template"
@@ -236,6 +238,7 @@ func TestElevenLabsFormatValidation(t *testing.T) {
 				Output: Output{
 					TempDirectory: "/tmp/test",
 					ImportPath:    "/tmp/test/import",
+					MediaID:       "test_report",
 				},
 				Prompt: Prompt{
 					Template: "Test template",

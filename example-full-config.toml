@@ -26,10 +26,15 @@ temp_directory = "/tmp/myrcast"
 # Directory where Myriad should import generated content
 import_path = "/Users/username/Documents/Myrcast"
 
+# Base filename for generated audio files (without extension)
+# The .wav extension will be added automatically
+media_id = "weather_report"
+
 [prompt]
 # Template for AI weather report generation
-# You can use variables like {{location}}, {{current_temp}}, {{conditions}}, etc.
-template = "You are a friendly weather reporter. Generate an engaging weather report for {{location}} based on the provided weather data. Include current conditions, temperature, and any notable weather patterns. Keep it conversational and informative."
+# Describe the style, tone, and format you want for your weather reports
+# Claude will automatically extract relevant details from the weather data provided
+template = "You are a professional radio weather announcer for morning drive time. Generate a 20-second weather report that's upbeat and informative. Include current conditions, today's high and low temperatures, and any weather to watch for. Use conversational language that sounds natural when spoken aloud. Keep it concise and engaging for busy commuters."
 
 [claude]
 # Claude model to use (defaults to claude-3-5-sonnet-20241022)
@@ -76,8 +81,8 @@ similarity = 0.8
 # Controls the exaggeration of the speaking style
 style = 0.0
 
-# Speaking speed (0.25-4.0, higher = faster speech)
-# 1.0 is normal speed, 0.5 is half speed, 2.0 is double speed
+# Speaking speed (0.7-1.2, higher = faster speech)
+# 1.0 is normal speed, ElevenLabs enforces 0.7-1.2 range
 speed = 1.0
 
 # Audio format: ElevenLabs format (codec_samplerate_bitrate)

@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"regexp"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -173,9 +174,11 @@ func NewClaudeClient(config ClaudeConfig) (*ClaudeClient, error) {
 
 // WeatherReportRequest contains the request data for generating a weather report
 type WeatherReportRequest struct {
-	WeatherData    *ForecastResponse // Weather data from OpenWeather API
+	WeatherData    *ForecastResponse // Raw weather data from OpenWeather API
+	TodayData      *TodayWeatherData // Pre-extracted today's weather data
 	PromptTemplate string            // Template with variable placeholders
 	Location       string            // Location name for the report
+	OutputPath     string            // Directory path for logging
 }
 
 // WeatherReportResponse contains the generated weather report
@@ -195,31 +198,27 @@ func (c *ClaudeClient) GenerateWeatherReport(ctx context.Context, request Weathe
 		"max_retries": c.config.MaxRetries,
 	})
 
-	// Format weather data for Claude context
-	weatherContext, err := c.formatWeatherContext(request.WeatherData, request.Location)
+	// Use the pre-extracted today's weather data
+	if request.TodayData == nil {
+		complete(fmt.Errorf("today's weather data is nil"))
+		return nil, fmt.Errorf("today's weather data is required but is nil")
+	}
+
+	// Format weather data for Claude context using pre-extracted data
+	weatherContext, err := c.formatWeatherContextFromExtracted(request.TodayData)
 	if err != nil {
 		complete(fmt.Errorf("failed to format weather context: %w", err))
 		return nil, fmt.Errorf("failed to format weather context: %w", err)
 	}
 
-	// Extract weather data for template variables
-	weatherData, err := c.extractWeatherVariables(request.WeatherData, request.Location)
-	if err != nil {
-		complete(fmt.Errorf("failed to extract weather variables: %w", err))
-		return nil, fmt.Errorf("failed to extract weather variables: %w", err)
-	}
-
-	// Substitute variables in the prompt template
-	prompt := c.substituteTemplateVariables(request.PromptTemplate, weatherData)
-
-	// Build the message request
+	// Build the message request using the prompt template directly
 	messageReq := anthropic.MessageNewParams{
 		Model:       anthropic.Model(c.config.Model),
 		MaxTokens:   int64(c.config.MaxTokens),
 		Temperature: anthropic.Float(c.config.Temperature),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(
-				anthropic.NewTextBlock(prompt),
+				anthropic.NewTextBlock(request.PromptTemplate),
 			),
 		},
 		System: []anthropic.TextBlockParam{
@@ -228,6 +227,13 @@ func (c *ClaudeClient) GenerateWeatherReport(ctx context.Context, request Weathe
 				Text: weatherContext,
 			},
 		},
+	}
+
+	// Log the full prompt information to results.log
+	if err := c.logPromptToFile(request, weatherContext, messageReq); err != nil {
+		logger.LogWithFields(logger.WarnLevel, "Failed to log prompt to file", map[string]any{
+			"error": err.Error(),
+		})
 	}
 
 	// Execute request with retry logic
@@ -469,7 +475,7 @@ func (c *ClaudeClient) parseClaudeError(err error) *ClaudeAPIError {
 	}
 }
 
-// formatWeatherContext creates structured context from weather data
+// formatWeatherContext creates structured context from weather data (deprecated - use formatWeatherContextFromExtracted)
 func (c *ClaudeClient) formatWeatherContext(weather *ForecastResponse, location string) (string, error) {
 	if weather == nil {
 		return "", fmt.Errorf("weather data is nil")
@@ -482,25 +488,36 @@ func (c *ClaudeClient) formatWeatherContext(weather *ForecastResponse, location 
 		return "", fmt.Errorf("failed to extract today's weather: %w", err)
 	}
 
+	return c.formatWeatherContextFromExtracted(todayData)
+}
+
+// formatWeatherContextFromExtracted creates structured context from already-extracted weather data
+func (c *ClaudeClient) formatWeatherContextFromExtracted(todayData *TodayWeatherData) (string, error) {
+	if todayData == nil {
+		return "", fmt.Errorf("today weather data is nil")
+	}
+
 	// Build structured context for Claude
 	var context strings.Builder
 
 	// Header with location and time context
-	context.WriteString(fmt.Sprintf("WEATHER DATA FOR %s\n", strings.ToUpper(location)))
-	context.WriteString(fmt.Sprintf("Report generated: %s\n", time.Now().Format("Monday, January 2, 2006 at 3:04 PM")))
-	context.WriteString(fmt.Sprintf("Data source: %s, %s\n\n", weather.City.Name, weather.City.Country))
+	// Use the already extracted location from todayData which has the correct city name
+	cityLocation := todayData.Location
+
+	context.WriteString(fmt.Sprintf("WEATHER DATA FOR %s\n", strings.ToUpper(cityLocation)))
 
 	// Current conditions section
 	context.WriteString("CURRENT CONDITIONS:\n")
-	context.WriteString(fmt.Sprintf("- Temperature: %s\n", formatTemperature(todayData.CurrentTemp, todayData.Units)))
+	context.WriteString(fmt.Sprintf("- Today is %s\n", time.Now().Format("Monday, January 2 at 3:04 PM")))
+	context.WriteString(fmt.Sprintf("- Temperature: %.0f%s\n", todayData.CurrentTemp, getTemperatureUnit(todayData.Units)))
 	context.WriteString(fmt.Sprintf("- Conditions: %s\n", todayData.CurrentConditions))
 	context.WriteString(fmt.Sprintf("- Wind: %s\n", todayData.WindConditions))
 	context.WriteString("\n")
 
 	// Today's forecast section
 	context.WriteString("TODAY'S FORECAST:\n")
-	context.WriteString(fmt.Sprintf("- High temperature: %s\n", formatTemperature(todayData.TempHigh, todayData.Units)))
-	context.WriteString(fmt.Sprintf("- Low temperature: %s\n", formatTemperature(todayData.TempLow, todayData.Units)))
+	context.WriteString(fmt.Sprintf("- High temperature: %.0f%s\n", todayData.TempHigh, getTemperatureUnit(todayData.Units)))
+	context.WriteString(fmt.Sprintf("- Low temperature: %.0f%s\n", todayData.TempLow, getTemperatureUnit(todayData.Units)))
 	context.WriteString(fmt.Sprintf("- Precipitation chance: %.0f%%\n", todayData.RainChance*100))
 
 	// Temperature trend analysis
@@ -523,154 +540,321 @@ func (c *ClaudeClient) formatWeatherContext(weather *ForecastResponse, location 
 		context.WriteString("\n")
 	}
 
-	// Radio broadcast guidance
+	// Radio broadcast guidance with enhanced contextual information
 	context.WriteString("BROADCAST NOTES:\n")
-	context.WriteString("- This weather data should be presented in a conversational, radio-friendly tone\n")
-	context.WriteString("- Focus on information most relevant to listeners' daily activities\n")
-	context.WriteString("- Include timing for any weather changes throughout the day\n")
-
-	// Rain guidance (todayData.RainChance is already 0-1, convert to percentage)
-	rainChancePercent := todayData.RainChance * 100
-	if rainChancePercent > 70 {
-		context.WriteString("- Rain is likely - mention umbrella/indoor activities\n")
-	} else if rainChancePercent > 30 {
-		context.WriteString("- Rain is possible - mention it may be worth watching the sky\n")
-	} else {
-		context.WriteString("- Rain is unlikely - good day for outdoor activities\n")
-	}
-
-	// Temperature guidance
-	if todayData.Units == "imperial" {
-		if todayData.TempHigh > 85 {
-			context.WriteString("- Hot day - mention staying hydrated and cool\n")
-		} else if todayData.TempLow < 32 {
-			context.WriteString("- Freezing temperatures - mention bundling up and potential ice\n")
-		} else if todayData.TempHigh < 50 {
-			context.WriteString("- Cool day - mention layering clothes\n")
-		}
-	} else if todayData.Units == "metric" {
-		if todayData.TempHigh > 29 {
-			context.WriteString("- Hot day - mention staying hydrated and cool\n")
-		} else if todayData.TempLow < 0 {
-			context.WriteString("- Freezing temperatures - mention bundling up and potential ice\n")
-		} else if todayData.TempHigh < 10 {
-			context.WriteString("- Cool day - mention layering clothes\n")
-		}
+	
+	// Add comprehensive contextual information
+	now := time.Now()
+	contextualNotes := c.generateContextualBroadcastNotes(todayData, now)
+	for _, note := range contextualNotes {
+		context.WriteString(fmt.Sprintf("- %s\n", note))
 	}
 
 	return context.String(), nil
 }
 
-// extractWeatherVariables converts weather forecast data into template variables
-func (c *ClaudeClient) extractWeatherVariables(forecast *ForecastResponse, location string) (map[string]string, error) {
-	if forecast == nil {
-		return nil, fmt.Errorf("forecast data is nil")
-	}
-
-	// Create a weather client to extract today's data
-	weatherClient := &WeatherClient{} // We only need the extraction method
-	todayData, err := weatherClient.ExtractTodayWeather(forecast)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract today's weather: %w", err)
-	}
-
-	// Create variables map with all available template variables
-	variables := map[string]string{
-		// Location information
-		"location": location,
-		"city":     forecast.City.Name,
-		"country":  forecast.City.Country,
-
-		// Temperature data
-		"current_temp": formatTemperature(todayData.CurrentTemp, todayData.Units),
-		"temp_high":    formatTemperature(todayData.TempHigh, todayData.Units),
-		"temp_low":     formatTemperature(todayData.TempLow, todayData.Units),
-
-		// Weather conditions
-		"current_conditions": todayData.CurrentConditions,
-		"wind_conditions":    todayData.WindConditions,
-
-		// Precipitation
-		"rain_chance": formatPercentage(todayData.RainChance),
-
-		// System information
-		"units": todayData.Units,
-
-		// Time information
-		"date":         time.Now().Format("January 2"),
-		"dow":          time.Now().Format("Monday"),
-		"time":         time.Now().Format("3:04 PM"),
-		"last_updated": todayData.LastUpdated.Format("3:04 PM"),
-	}
-
-	// Add weather alerts as a comma-separated string
-	if len(todayData.WeatherAlerts) > 0 {
-		variables["weather_alerts"] = strings.Join(todayData.WeatherAlerts, ", ")
+// generateContextualBroadcastNotes creates comprehensive contextual broadcast notes
+// based on current time, weather conditions, and seasonal/holiday awareness
+func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherData, now time.Time) []string {
+	var notes []string
+	
+	// Time of day context
+	hour := now.Hour()
+	timeOfDay := c.getTimeOfDay(now)
+	notes = append(notes, fmt.Sprintf("Broadcast time: %s (%s)", 
+		now.Format("Monday, January 2 at 3:04 PM"), timeOfDay))
+	
+	// Day of week context
+	weekday := now.Weekday()
+	isWeekend := weekday == time.Saturday || weekday == time.Sunday
+	if isWeekend {
+		notes = append(notes, "Weekend broadcast - consider more relaxed, leisure-focused tone")
 	} else {
-		variables["weather_alerts"] = "none"
+		switch {
+		case hour >= 6 && hour < 9:
+			notes = append(notes, "Morning commute time - focus on travel conditions and daily planning")
+		case hour >= 17 && hour < 19:
+			notes = append(notes, "Evening commute time - emphasize evening and tomorrow's outlook")
+		case hour >= 9 && hour < 17:
+			notes = append(notes, "Business hours - professional tone, brief and informative")
+		default:
+			notes = append(notes, "Off-peak hours - consider more conversational, detailed approach")
+		}
 	}
-
-	return variables, nil
+	
+	// Season and time of year context
+	season := c.getSeason(now)
+	notes = append(notes, fmt.Sprintf("Season: %s - tailor weather discussion for seasonal relevance", season))
+	
+	// Seasonal weather emphasis
+	switch season {
+	case "winter":
+		if todayData.CurrentTemp < 32 { // Below freezing
+			notes = append(notes, "Cold weather alert - emphasize warming layers, ice/snow conditions")
+		}
+		notes = append(notes, "Winter season - mention heating costs, winter activities, holiday travel if applicable")
+	case "spring":
+		notes = append(notes, "Spring season - focus on changing conditions, outdoor activities resuming")
+		if todayData.RainChance > 0.3 {
+			notes = append(notes, "Spring rain - mention gardening, growth, renewal themes")
+		}
+	case "summer":
+		if todayData.CurrentTemp > 85 {
+			notes = append(notes, "Hot weather - emphasize hydration, cooling, outdoor safety")
+		}
+		notes = append(notes, "Summer season - highlight outdoor events, vacation weather, beach/pool conditions")
+	case "fall":
+		notes = append(notes, "Fall season - mention changing leaves, back-to-school, harvest themes")
+		if todayData.WindConditions != "" && strings.Contains(strings.ToLower(todayData.WindConditions), "wind") {
+			notes = append(notes, "Fall winds - good opportunity for autumn weather imagery")
+		}
+	}
+	
+	// Holiday awareness
+	if c.isHoliday(now) {
+		holidayName := c.getHolidayName(now)
+		if holidayName != "" {
+			notes = append(notes, fmt.Sprintf("Holiday broadcast (%s) - incorporate festive elements, travel considerations", holidayName))
+		} else {
+			notes = append(notes, "Holiday period - consider festive tone and travel weather impacts")
+		}
+	}
+	
+	// Weather-specific contextual notes
+	if todayData.RainChance > 0.5 {
+		notes = append(notes, "High rain probability - emphasize umbrella/rain gear, indoor alternatives")
+	}
+	
+	if todayData.CurrentTemp != 0 && todayData.TempHigh != 0 {
+		tempRange := todayData.TempHigh - todayData.TempLow
+		if tempRange > 25 {
+			notes = append(notes, "Large temperature swing - mention layering clothes, changing conditions throughout day")
+		}
+	}
+	
+	// Wind conditions context
+	if todayData.WindConditions != "" {
+		windLower := strings.ToLower(todayData.WindConditions)
+		if strings.Contains(windLower, "strong") || strings.Contains(windLower, "high") {
+			notes = append(notes, "Strong winds - mention outdoor activity impacts, potential power/tree concerns")
+		}
+	}
+	
+	// Special weather alerts context
+	if len(todayData.WeatherAlerts) > 0 {
+		notes = append(notes, "Weather alerts active - maintain serious, informative tone while being reassuring")
+	}
+	
+	// Location-specific notes (Seattle context from config)
+	cityLocation := strings.ToLower(todayData.Location)
+	if strings.Contains(cityLocation, "seattle") || strings.Contains(cityLocation, "47.6") {
+		notes = append(notes, "Seattle area - reference local landmarks, ferry conditions, mountain visibility if clear")
+		if strings.Contains(strings.ToLower(todayData.CurrentConditions), "clear") || 
+		   strings.Contains(strings.ToLower(todayData.CurrentConditions), "sunny") {
+			notes = append(notes, "Clear Seattle weather - rare treat! Mention mountain views, outdoor opportunities")
+		}
+	}
+	
+	// Broadcast timing urgency
+	if c.isUrgentTime(now) {
+		notes = append(notes, "Peak listening time - prioritize essential information, keep engaging but concise")
+	}
+	
+	return notes
 }
 
-// substituteTemplateVariables replaces template variables with actual values
-func (c *ClaudeClient) substituteTemplateVariables(template string, variables map[string]string) string {
-	// AIDEV-NOTE: Simple template format using {{variable}} only
-	re := regexp.MustCompile(`\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}`)
+// Helper functions for contextual broadcast notes
 
-	result := re.ReplaceAllStringFunc(template, func(match string) string {
-		submatch := re.FindStringSubmatch(match)
-		if len(submatch) < 2 {
-			return match
-		}
-		varName := submatch[1]
-		if value, exists := variables[varName]; exists {
-			return value
-		}
-		// Log warning for missing variable but don't fail
-		logger.LogOperationStart("template_substitution_warning", map[string]any{
-			"missing_variable": varName,
-			"available_vars":   getVariableNames(variables),
-		})
-		return fmt.Sprintf("[missing:%s]", varName) // Placeholder for missing variables
-	})
-
-	return result
-}
-
-// Helper functions for formatting weather data
-
-// formatTemperature formats temperature value with appropriate unit symbol
-func formatTemperature(temp float64, units string) string {
-	switch strings.ToLower(units) {
-	case "metric":
-		return fmt.Sprintf("%.0f°C", temp)
-	case "imperial":
-		return fmt.Sprintf("%.0f°F", temp)
-	case "kelvin":
-		return fmt.Sprintf("%.0f K", temp)
+func (c *ClaudeClient) getTimeOfDay(t time.Time) string {
+	hour := t.Hour()
+	switch {
+	case hour >= 5 && hour < 12:
+		return "morning"
+	case hour >= 12 && hour < 17:
+		return "afternoon" 
+	case hour >= 17 && hour < 22:
+		return "evening"
 	default:
-		return fmt.Sprintf("%.1f", temp)
+		return "night"
 	}
 }
 
-// formatPercentage formats a probability value (0-1) as a percentage
-func formatPercentage(prob float64) string {
-	return fmt.Sprintf("%.0f%%", prob*100)
-}
-
-// getVariableNames returns a slice of available variable names for logging
-func getVariableNames(variables map[string]string) []string {
-	names := make([]string, 0, len(variables))
-	for name := range variables {
-		names = append(names, name)
+func (c *ClaudeClient) getSeason(t time.Time) string {
+	month := t.Month()
+	switch {
+	case month >= 3 && month <= 5:
+		return "spring"
+	case month >= 6 && month <= 8:
+		return "summer"
+	case month >= 9 && month <= 11:
+		return "fall"
+	default:
+		return "winter"
 	}
-	return names
 }
 
-// validateGeneratedScript ensures the script meets requirements
+func (c *ClaudeClient) isHoliday(t time.Time) bool {
+	return c.checkUSHolidays(t) || c.checkInternationalHolidays(t)
+}
+
+func (c *ClaudeClient) getHolidayName(t time.Time) string {
+	month := t.Month()
+	day := t.Day()
+	
+	// Major fixed holidays
+	switch {
+	case month == time.January && day == 1:
+		return "New Year's Day"
+	case month == time.February && day == 14:
+		return "Valentine's Day"
+	case month == time.March && day == 17:
+		return "St. Patrick's Day"
+	case month == time.July && day == 4:
+		return "Independence Day"
+	case month == time.October && day == 31:
+		return "Halloween"
+	case month == time.November && day == 11:
+		return "Veterans Day"
+	case month == time.December && day == 25:
+		return "Christmas Day"
+	case month == time.December && day == 31:
+		return "New Year's Eve"
+	}
+	
+	// Variable holidays (simplified check)
+	if month == time.November && c.isNthWeekdayOfMonth(t, 4, time.Thursday) {
+		return "Thanksgiving"
+	}
+	if month == time.May && c.isLastWeekdayOfMonth(t, time.Monday) {
+		return "Memorial Day"
+	}
+	if month == time.September && c.isNthWeekdayOfMonth(t, 1, time.Monday) {
+		return "Labor Day"
+	}
+	
+	return ""
+}
+
+func (c *ClaudeClient) checkUSHolidays(t time.Time) bool {
+	month := t.Month()
+	day := t.Day()
+	
+	// Fixed holidays
+	fixedHolidays := map[time.Month][]int{
+		time.January:  {1},      // New Year's Day
+		time.February: {14},     // Valentine's Day
+		time.March:    {17},     // St. Patrick's Day
+		time.July:     {4},      // Independence Day
+		time.October:  {31},     // Halloween
+		time.November: {11},     // Veterans Day
+		time.December: {25, 31}, // Christmas Day, New Year's Eve
+	}
+	
+	if days, exists := fixedHolidays[month]; exists {
+		for _, holidayDay := range days {
+			if day == holidayDay {
+				return true
+			}
+		}
+	}
+	
+	// Variable holidays
+	switch month {
+	case time.January:
+		return c.isNthWeekdayOfMonth(t, 3, time.Monday) // MLK Day
+	case time.February:
+		return c.isNthWeekdayOfMonth(t, 3, time.Monday) // Presidents' Day
+	case time.May:
+		return c.isLastWeekdayOfMonth(t, time.Monday) || c.isNthWeekdayOfMonth(t, 2, time.Sunday) // Memorial Day, Mother's Day
+	case time.June:
+		return c.isNthWeekdayOfMonth(t, 3, time.Sunday) // Father's Day
+	case time.September:
+		return c.isNthWeekdayOfMonth(t, 1, time.Monday) // Labor Day
+	case time.October:
+		return c.isNthWeekdayOfMonth(t, 2, time.Monday) // Columbus Day
+	case time.November:
+		return c.isNthWeekdayOfMonth(t, 4, time.Thursday) // Thanksgiving
+	}
+	
+	return false
+}
+
+func (c *ClaudeClient) checkInternationalHolidays(t time.Time) bool {
+	month := t.Month()
+	day := t.Day()
+	
+	internationalHolidays := map[time.Month][]int{
+		time.January:  {1},  // New Year's Day
+		time.February: {14}, // Valentine's Day
+		time.March:    {8},  // International Women's Day
+		time.April:    {22}, // Earth Day
+		time.May:      {1},  // International Workers' Day
+		time.October:  {31}, // Halloween
+		time.December: {25}, // Christmas Day
+	}
+	
+	if days, exists := internationalHolidays[month]; exists {
+		for _, holidayDay := range days {
+			if day == holidayDay {
+				return true
+			}
+		}
+	}
+	
+	return false
+}
+
+func (c *ClaudeClient) isNthWeekdayOfMonth(t time.Time, n int, weekday time.Weekday) bool {
+	if t.Weekday() != weekday {
+		return false
+	}
+	
+	firstOfMonth := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+	firstWeekday := firstOfMonth
+	for firstWeekday.Weekday() != weekday {
+		firstWeekday = firstWeekday.AddDate(0, 0, 1)
+	}
+	
+	nthWeekday := firstWeekday.AddDate(0, 0, (n-1)*7)
+	return t.Day() == nthWeekday.Day() && t.Month() == nthWeekday.Month()
+}
+
+func (c *ClaudeClient) isLastWeekdayOfMonth(t time.Time, weekday time.Weekday) bool {
+	if t.Weekday() != weekday {
+		return false
+	}
+	
+	nextMonth := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, t.Location())
+	lastOfMonth := nextMonth.AddDate(0, 0, -1)
+	
+	lastWeekday := lastOfMonth
+	for lastWeekday.Weekday() != weekday {
+		lastWeekday = lastWeekday.AddDate(0, 0, -1)
+	}
+	
+	return t.Day() == lastWeekday.Day()
+}
+
+func (c *ClaudeClient) isUrgentTime(t time.Time) bool {
+	hour := t.Hour()
+	weekday := t.Weekday()
+	
+	// Business hours on weekdays are less urgent than off-hours
+	if weekday >= time.Monday && weekday <= time.Friday {
+		// Morning/evening commute times are urgent
+		if (hour >= 6 && hour < 9) || (hour >= 17 && hour < 19) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// extractWeatherVariables converts weather forecast data into template variables
+
+// validateGeneratedScript ensures the script meets radio broadcast requirements
 func (c *ClaudeClient) validateGeneratedScript(script string) error {
-	// AIDEV-NOTE: Basic validation - ensure script is not empty and reasonable length
+	// AIDEV-NOTE: Enhanced validation for radio broadcast requirements
 	script = strings.TrimSpace(script)
 
 	if script == "" {
@@ -682,10 +866,101 @@ func (c *ClaudeClient) validateGeneratedScript(script string) error {
 		return fmt.Errorf("generated script is too short (%d characters)", len(script))
 	}
 
-	// Check maximum length (radio reports should be concise)
+	// Check maximum length (radio reports should be concise, ~2-3 minutes at 150 WPM = ~450-750 words)
 	if len(script) > 5000 {
 		return fmt.Errorf("generated script is too long (%d characters)", len(script))
 	}
+
+	// Word count validation for radio broadcast timing
+	wordCount := len(strings.Fields(script))
+	if wordCount < 15 {
+		return fmt.Errorf("generated script has too few words (%d words, minimum 15)", wordCount)
+	}
+	if wordCount > 800 {
+		return fmt.Errorf("generated script has too many words (%d words, maximum 800 for ~5 minute broadcast)", wordCount)
+	}
+
+	// AIDEV-NOTE: Radio broadcast content validation
+	scriptLower := strings.ToLower(script)
+
+	// Ensure script contains weather-related content
+	weatherKeywords := []string{"temperature", "weather", "degrees", "rain", "wind", "sunny", "cloudy", "forecast"}
+	hasWeatherContent := false
+	for _, keyword := range weatherKeywords {
+		if strings.Contains(scriptLower, keyword) {
+			hasWeatherContent = true
+			break
+		}
+	}
+	if !hasWeatherContent {
+		return fmt.Errorf("generated script appears to lack weather-related content")
+	}
+
+	return nil
+}
+
+// getTemperatureUnit returns the appropriate temperature unit symbol based on units
+func getTemperatureUnit(units string) string {
+	switch strings.ToLower(units) {
+	case "metric":
+		return "°C"
+	case "imperial":
+		return "°F"
+	case "kelvin":
+		return " K"
+	default:
+		return ""
+	}
+}
+
+// logPromptToFile logs the full Claude prompt and weather data to results.log
+func (c *ClaudeClient) logPromptToFile(request WeatherReportRequest, weatherContext string, messageReq anthropic.MessageNewParams) error {
+	// Determine output directory from the request context
+	outputDir := request.OutputPath
+	if outputDir == "" {
+		outputDir = "." // Default to current directory
+	}
+
+	logFilePath := filepath.Join(outputDir, "results.log")
+
+	// Create log entry with timestamp
+	timestamp := time.Now().Format("2006-01-02 15:04:05 MST")
+	logEntry := fmt.Sprintf(`
+=== CLAUDE WEATHER REPORT GENERATION ===
+Timestamp: %s
+Location: %s
+
+=== WEATHER DATA (System Context) ===
+%s
+
+=== USER PROMPT TEMPLATE ===
+%s
+
+=== CLAUDE API PARAMETERS ===
+Model: %s
+Max Tokens: %d
+Temperature: %.2f
+
+=== END LOG ENTRY ===
+
+`, timestamp, request.Location, weatherContext, request.PromptTemplate,
+		string(messageReq.Model), messageReq.MaxTokens, messageReq.Temperature.Value)
+
+	// Overwrite log file each time
+	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open results.log: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(logEntry); err != nil {
+		return fmt.Errorf("failed to write to results.log: %w", err)
+	}
+
+	logger.LogWithFields(logger.InfoLevel, "Claude prompt logged to file", map[string]any{
+		"log_file": logFilePath,
+		"location": request.Location,
+	})
 
 	return nil
 }

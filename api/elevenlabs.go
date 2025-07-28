@@ -15,10 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-audio/audio"
-	"github.com/go-audio/wav"
 	"github.com/haguro/elevenlabs-go"
-	"github.com/hajimehoshi/go-mp3"
 	"myrcast/internal/logger"
 )
 
@@ -67,11 +64,11 @@ type ElevenLabsRateLimiter struct {
 // CustomVoiceSettings extends the SDK VoiceSettings to include speed parameter
 // AIDEV-NOTE: Using custom struct since the SDK doesn't support speed parameter yet
 type CustomVoiceSettings struct {
-	Stability       float64 `json:"stability"`
-	SimilarityBoost float64 `json:"similarity_boost"`
-	Style           float64 `json:"style,omitempty"`
-	Speed           float64 `json:"speed,omitempty"`
-	SpeakerBoost    bool    `json:"use_speaker_boost,omitempty"`
+	Stability       *float64 `json:"stability,omitempty"`
+	SimilarityBoost *float64 `json:"similarity_boost,omitempty"`
+	Style           *float64 `json:"style,omitempty"`
+	Speed           *float64 `json:"speed,omitempty"`
+	SpeakerBoost    *bool    `json:"use_speaker_boost,omitempty"`
 }
 
 // CustomTextToSpeechRequest for direct API calls with speed support
@@ -243,16 +240,14 @@ func (c *ElevenLabsClient) GenerateTextToSpeech(ctx context.Context, request Tex
 	// Determine voice ID to use
 	voiceID := c.getVoiceID(request.VoiceID)
 
-	// Create custom ElevenLabs request with speed support
+	// Create custom ElevenLabs request matching working curl command structure
+	// AIDEV-NOTE: Matching exact JSON structure from working curl command
+	speed := c.config.Speed
 	ttsReq := CustomTextToSpeechRequest{
 		Text:    request.Text,
 		ModelID: c.config.Model,
 		VoiceSettings: &CustomVoiceSettings{
-			Stability:       c.config.Stability,
-			SimilarityBoost: c.config.Similarity,
-			Style:           c.config.Style,
-			Speed:           c.config.Speed,
-			SpeakerBoost:    false, // Default to false, could be made configurable
+			Speed: &speed, // Only speed parameter like the working curl
 		},
 	}
 
@@ -263,26 +258,19 @@ func (c *ElevenLabsClient) GenerateTextToSpeech(ctx context.Context, request Tex
 		return nil, err
 	}
 
-	// Save original MP3 file
+	// Save MP3 file (no conversion needed - Myriad supports MP3)
 	mp3FilePath, err := c.saveMP3Audio(audioData, request.OutputDir, request.FileName)
 	if err != nil {
 		complete(fmt.Errorf("failed to save MP3 audio: %w", err))
 		return nil, fmt.Errorf("failed to save MP3 audio: %w", err)
 	}
 
-	// Convert MP3 to WAV format for radio broadcast
-	wavFilePath, err := c.convertMP3ToWAV(mp3FilePath, request.OutputDir, request.FileName)
-	if err != nil {
-		complete(fmt.Errorf("failed to convert audio format: %w", err))
-		return nil, fmt.Errorf("failed to convert audio format: %w", err)
-	}
-
-	// Calculate audio duration
-	duration, err := c.calculateAudioDuration(wavFilePath)
+	// Calculate audio duration from MP3 (simplified - no WAV conversion needed)
+	duration, err := c.calculateMP3Duration(mp3FilePath)
 	if err != nil {
 		logger.LogWithFields(logger.WarnLevel, "Failed to calculate audio duration", map[string]any{
-			"error":     err.Error(),
-			"wav_file":  wavFilePath,
+			"error":    err.Error(),
+			"mp3_file": mp3FilePath,
 		})
 		duration = 0 // Set to 0 if we can't calculate
 	}
@@ -290,8 +278,8 @@ func (c *ElevenLabsClient) GenerateTextToSpeech(ctx context.Context, request Tex
 	complete(nil)
 
 	return &TextToSpeechResponse{
-		AudioFilePath: wavFilePath,
-		OriginalMP3:   mp3FilePath,
+		AudioFilePath: mp3FilePath, // Return MP3 directly
+		OriginalMP3:   mp3FilePath, // Same file now
 		DurationMs:    duration,
 		VoiceUsed:     voiceID,
 		GeneratedAt:   time.Now(),
@@ -302,7 +290,7 @@ func (c *ElevenLabsClient) GenerateTextToSpeech(ctx context.Context, request Tex
 // executeCustomTextToSpeechWithRetry executes a custom TTS request with speed support
 func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Context, voiceID string, ttsReq CustomTextToSpeechRequest) ([]byte, error) {
 	var lastErr error
-	baseURL := "https://api.elevenlabs.io/v1/text-to-speech/" + voiceID
+	baseURL := "https://api.elevenlabs.io/v1/text-to-speech/" + voiceID + "?output_format=" + c.config.Format
 
 	for attempt := 0; attempt <= c.config.MaxRetries; attempt++ {
 		// Apply rate limiting before each request
@@ -325,6 +313,8 @@ func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Contex
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request: %w", err)
 		}
+
+
 
 		// Create HTTP request
 		req, err := http.NewRequestWithContext(ctx, "POST", baseURL, bytes.NewBuffer(jsonData))
@@ -634,143 +624,27 @@ func (c *ElevenLabsClient) saveMP3Audio(audioData []byte, outputDir, fileName st
 	return mp3FilePath, nil
 }
 
-// convertMP3ToWAV converts an MP3 file to WAV format optimized for radio broadcast
-func (c *ElevenLabsClient) convertMP3ToWAV(mp3FilePath, outputDir, fileName string) (string, error) {
-	// AIDEV-NOTE: Convert MP3 to WAV 44.1kHz/16-bit mono for radio broadcast compatibility
-	complete := logger.LogOperationStart("mp3_to_wav_conversion", map[string]any{
-		"input_file":      mp3FilePath,
-		"target_rate":     targetSampleRate,
-		"target_channels": targetChannels,
-		"target_bits":     targetBitDepth,
+// calculateMP3Duration calculates the duration of an MP3 file in milliseconds
+// AIDEV-NOTE: Simple duration calculation using file size estimation for MP3
+func (c *ElevenLabsClient) calculateMP3Duration(mp3FilePath string) (int, error) {
+	// Get file size
+	fileInfo, err := os.Stat(mp3FilePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get MP3 file info: %w", err)
+	}
+	
+	// Simple estimation: MP3 at 128kbps ≈ 16KB per second
+	// This is rough but sufficient for logging purposes
+	fileSizeKB := fileInfo.Size() / 1024
+	estimatedSeconds := fileSizeKB / 16
+	estimatedMs := int(estimatedSeconds * 1000)
+	
+	logger.LogWithFields(logger.InfoLevel, "MP3 duration estimated", map[string]any{
+		"file_path":       mp3FilePath,
+		"file_size_kb":    fileSizeKB,
+		"duration_ms":     estimatedMs,
 	})
-
-	// Open and decode MP3 file
-	mp3File, err := os.Open(mp3FilePath)
-	if err != nil {
-		complete(fmt.Errorf("failed to open MP3 file: %w", err))
-		return "", fmt.Errorf("failed to open MP3 file: %w", err)
-	}
-	defer mp3File.Close()
-
-	// Decode MP3
-	decoder, err := mp3.NewDecoder(mp3File)
-	if err != nil {
-		complete(fmt.Errorf("failed to create MP3 decoder: %w", err))
-		return "", fmt.Errorf("failed to create MP3 decoder: %w", err)
-	}
-
-	// Read all audio data
-	audioBuffer := &bytes.Buffer{}
-	if _, err := io.Copy(audioBuffer, decoder); err != nil {
-		complete(fmt.Errorf("failed to decode MP3 audio: %w", err))
-		return "", fmt.Errorf("failed to decode MP3 audio: %w", err)
-	}
-
-	// Convert bytes to int samples
-	audioBytes := audioBuffer.Bytes()
-	if len(audioBytes)%2 != 0 {
-		complete(fmt.Errorf("invalid audio data length: %d", len(audioBytes)))
-		return "", fmt.Errorf("invalid audio data length: %d bytes", len(audioBytes))
-	}
-
-	// Convert byte pairs to int samples
-	samples := make([]int, len(audioBytes)/2)
-	for i := 0; i < len(samples); i++ {
-		// Convert little-endian 16-bit samples
-		samples[i] = int(int16(audioBytes[i*2]) | int16(audioBytes[i*2+1])<<8)
-	}
-
-	// Create audio format
-	format := &audio.Format{
-		NumChannels: targetChannels,
-		SampleRate:  targetSampleRate,
-	}
-
-	// Create audio buffer
-	audioBuf := &audio.IntBuffer{
-		Data:   samples,
-		Format: format,
-	}
-
-	// Create WAV file path
-	wavFilePath := filepath.Join(outputDir, fileName+".wav")
-
-	// Create and write WAV file
-	wavFile, err := os.Create(wavFilePath)
-	if err != nil {
-		complete(fmt.Errorf("failed to create WAV file: %w", err))
-		return "", fmt.Errorf("failed to create WAV file: %w", err)
-	}
-	defer wavFile.Close()
-
-	// Create WAV encoder
-	encoder := wav.NewEncoder(wavFile, targetSampleRate, targetBitDepth, targetChannels, 1)
-	if err := encoder.Write(audioBuf); err != nil {
-		complete(fmt.Errorf("failed to encode WAV audio: %w", err))
-		return "", fmt.Errorf("failed to encode WAV audio: %w", err)
-	}
-
-	if err := encoder.Close(); err != nil {
-		complete(fmt.Errorf("failed to close WAV encoder: %w", err))
-		return "", fmt.Errorf("failed to close WAV encoder: %w", err)
-	}
-
-	complete(nil)
-
-	logger.LogWithFields(logger.InfoLevel, "Audio converted to WAV format", map[string]any{
-		"input_file":    mp3FilePath,
-		"output_file":   wavFilePath,
-		"sample_rate":   targetSampleRate,
-		"bit_depth":     targetBitDepth,
-		"channels":      targetChannels,
-		"samples_count": len(samples),
-	})
-
-	return wavFilePath, nil
+	
+	return estimatedMs, nil
 }
 
-// calculateAudioDuration calculates the duration of a WAV file in milliseconds
-func (c *ElevenLabsClient) calculateAudioDuration(wavFilePath string) (int, error) {
-	// Open WAV file
-	wavFile, err := os.Open(wavFilePath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open WAV file: %w", err)
-	}
-	defer wavFile.Close()
-
-	// Create WAV decoder
-	decoder := wav.NewDecoder(wavFile)
-	if !decoder.IsValidFile() {
-		return 0, fmt.Errorf("invalid WAV file")
-	}
-
-	// Get format information
-	format := decoder.Format()
-	if format == nil {
-		return 0, fmt.Errorf("failed to read WAV format")
-	}
-
-	// Get file info for total size
-	fileInfo, err := wavFile.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get file info: %w", err)
-	}
-
-	// Calculate duration
-	// WAV header is typically 44 bytes, audio data starts after that
-	audioDataSize := fileInfo.Size() - 44
-	bytesPerSample := targetBitDepth / 8
-	bytesPerSecond := targetSampleRate * targetChannels * bytesPerSample
-	durationSeconds := float64(audioDataSize) / float64(bytesPerSecond)
-	durationMs := int(durationSeconds * 1000)
-
-	logger.LogWithFields(logger.DebugLevel, "Audio duration calculated", map[string]any{
-		"file_path":       wavFilePath,
-		"file_size":       fileInfo.Size(),
-		"audio_data_size": audioDataSize,
-		"duration_ms":     durationMs,
-		"duration_sec":    durationSeconds,
-	})
-
-	return durationMs, nil
-}

@@ -158,8 +158,31 @@ func TestValidateGeneratedScript(t *testing.T) {
 			errorMsg:  "too long",
 		},
 		{
-			name:      "Valid script",
-			script:    "Good morning listeners! Today's weather forecast for San Francisco is looking beautiful with clear skies and temperatures reaching 72 degrees.",
+			name:      "Too few words",
+			script:    "This script has only ten words in total content here.",
+			wantError: true,
+			errorMsg:  "too few words",
+		},
+		{
+			name:      "Too many words",
+			script:    strings.Repeat("word ", 801) + "weather",
+			wantError: true,
+			errorMsg:  "too many words",
+		},
+		{
+			name:      "No weather content",
+			script:    "This is a very long script with many words but it does not contain any information about meteorological conditions or atmospheric phenomena that would be relevant for a broadcast.",
+			wantError: true,
+			errorMsg:  "weather-related content",
+		},
+		{
+			name:      "Valid weather script",
+			script:    "Good morning listeners! Today's weather forecast for San Francisco is looking beautiful with clear skies and temperatures reaching 72 degrees. Light winds from the west at 5 mph.",
+			wantError: false,
+		},
+		{
+			name:      "Valid script with different weather terms",
+			script:    "The forecast shows cloudy skies this morning with a chance of rain later. Temperatures will be in the mid-60s with moderate wind conditions throughout the day.",
 			wantError: false,
 		},
 	}
@@ -219,198 +242,9 @@ func TestClaudeAPIIntegration(t *testing.T) {
 	// But we've verified the client is created properly with the correct configuration
 }
 
-// TestTemplateVariableSubstitution tests the template variable substitution system
-func TestTemplateVariableSubstitution(t *testing.T) {
-	client := &ClaudeClient{}
 
-	// Create test variables map
-	variables := map[string]string{
-		"location":           "San Francisco",
-		"current_temp":       "72°F",
-		"temp_high":          "78°F",
-		"temp_low":           "65°F",
-		"current_conditions": "partly cloudy",
-		"rain_chance":        "10%",
-		"dow":                "Thursday",
-	}
 
-	tests := []struct {
-		name     string
-		template string
-		expected string
-	}{
-		{
-			name:     "Single variable {{format}}",
-			template: "Today in {{location}} it's {{current_temp}}",
-			expected: "Today in San Francisco it's 72°F",
-		},
-		{
-			name:     "Multiple variables {{format}}",
-			template: "Weather for {{location}}: {{current_conditions}}, {{current_temp}} with highs of {{temp_high}}",
-			expected: "Weather for San Francisco: partly cloudy, 72°F with highs of 78°F",
-		},
-		{
-			name:     "Complex template with day",
-			template: "{{location}} weather on {{dow}}: {{current_conditions}} with {{current_temp}}",
-			expected: "San Francisco weather on Thursday: partly cloudy with 72°F",
-		},
-		{
-			name:     "Missing variable",
-			template: "Weather in {{location}} with {{missing_var}}",
-			expected: "Weather in San Francisco with [missing:missing_var]",
-		},
-		{
-			name:     "No variables",
-			template: "Static weather report text",
-			expected: "Static weather report text",
-		},
-		{
-			name:     "Empty template",
-			template: "",
-			expected: "",
-		},
-		{
-			name:     "Single braces ignored",
-			template: "Weather in {location} is {{current_temp}}",
-			expected: "Weather in {location} is 72°F",
-		},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := client.substituteTemplateVariables(tt.template, variables)
-			if result != tt.expected {
-				t.Errorf("Expected: %q, got: %q", tt.expected, result)
-			}
-		})
-	}
-}
-
-// TestFormatTemperature tests temperature formatting with different units
-func TestFormatTemperature(t *testing.T) {
-	tests := []struct {
-		name     string
-		temp     float64
-		units    string
-		expected string
-	}{
-		{"Imperial", 72.5, "imperial", "72°F"},
-		{"Metric", 22.2, "metric", "22°C"},
-		{"Kelvin", 295.15, "kelvin", "295 K"},
-		{"Unknown units", 72.5, "unknown", "72.5"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatTemperature(tt.temp, tt.units)
-			if result != tt.expected {
-				t.Errorf("Expected: %q, got: %q", tt.expected, result)
-			}
-		})
-	}
-}
-
-// TestFormatPercentage tests percentage formatting
-func TestFormatPercentage(t *testing.T) {
-	tests := []struct {
-		name     string
-		prob     float64
-		expected string
-	}{
-		{"Zero", 0.0, "0%"},
-		{"Half", 0.5, "50%"},
-		{"Full", 1.0, "100%"},
-		{"Decimal", 0.15, "15%"},
-		{"High decimal", 0.856, "86%"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatPercentage(tt.prob)
-			if result != tt.expected {
-				t.Errorf("Expected: %q, got: %q", tt.expected, result)
-			}
-		})
-	}
-}
-
-// TestExtractWeatherVariables tests weather data variable extraction
-func TestExtractWeatherVariables(t *testing.T) {
-	// Create mock forecast data
-	forecast := &ForecastResponse{
-		City: CityInfo{
-			Name:    "San Francisco",
-			Country: "US",
-		},
-		List: []ForecastItem{
-			{
-				Dt: time.Now().Unix(),
-				Main: MainWeatherData{
-					Temp:    72.5,
-					TempMin: 65.0,
-					TempMax: 78.0,
-				},
-				Weather: []WeatherCondition{
-					{
-						Main:        "Clouds",
-						Description: "partly cloudy",
-					},
-				},
-				Pop: 0.1,
-				Wind: WindData{
-					Speed: 5.5,
-					Deg:   180,
-				},
-			},
-		},
-	}
-
-	client := &ClaudeClient{}
-	variables, err := client.extractWeatherVariables(forecast, "San Francisco")
-
-	if err != nil {
-		t.Fatalf("Failed to extract weather variables: %v", err)
-	}
-
-	// Check that key variables are present
-	expectedKeys := []string{
-		"location", "city", "country", "current_temp", "temp_high", "temp_low",
-		"current_conditions", "rain_chance", "units", "date", "dow", "time",
-	}
-
-	for _, key := range expectedKeys {
-		if _, exists := variables[key]; !exists {
-			t.Errorf("Expected variable %q not found in extracted variables", key)
-		}
-	}
-
-	// Check specific values
-	if variables["location"] != "San Francisco" {
-		t.Errorf("Expected location 'San Francisco', got %q", variables["location"])
-	}
-
-	if variables["city"] != "San Francisco" {
-		t.Errorf("Expected city 'San Francisco', got %q", variables["city"])
-	}
-
-	if variables["country"] != "US" {
-		t.Errorf("Expected country 'US', got %q", variables["country"])
-	}
-}
-
-// TestExtractWeatherVariablesNilForecast tests error handling for nil forecast
-func TestExtractWeatherVariablesNilForecast(t *testing.T) {
-	client := &ClaudeClient{}
-	_, err := client.extractWeatherVariables(nil, "Test Location")
-
-	if err == nil {
-		t.Error("Expected error for nil forecast, got nil")
-	}
-
-	if !strings.Contains(err.Error(), "forecast data is nil") {
-		t.Errorf("Expected error about nil forecast, got: %v", err)
-	}
-}
 
 // TestFormatWeatherContext tests the weather context formatting for Claude
 func TestFormatWeatherContext(t *testing.T) {

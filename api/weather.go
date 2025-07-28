@@ -340,9 +340,22 @@ func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayW
 		}
 	}
 
+	// AIDEV-NOTE: If no today data exists (late evening), use next available forecast data
 	if len(todayEntries) == 0 {
-		complete(fmt.Errorf("no forecast data found for today"))
-		return nil, fmt.Errorf("no forecast data available for today")
+		logger.LogWithFields(logger.WarnLevel, "No forecast data for today, using next available data", map[string]any{
+			"current_time": now.Format("15:04:05 UTC"),
+			"today_range":  fmt.Sprintf("%s to %s", todayStart.Format("15:04"), todayEnd.Format("15:04")),
+			"entries":      len(forecast.List),
+		})
+
+		// Use first available forecast entry as fallback
+		if len(forecast.List) > 0 {
+			todayEntries = []ForecastItem{forecast.List[0]}
+			currentEntry = &forecast.List[0]
+		} else {
+			complete(fmt.Errorf("no forecast data available at all"))
+			return nil, fmt.Errorf("no forecast data available")
+		}
 	}
 
 	// Calculate temperature highs and lows for today
