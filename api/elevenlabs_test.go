@@ -565,13 +565,13 @@ func TestAudioDurationCalculation(t *testing.T) {
 	client := &ElevenLabsClient{}
 
 	// Test with non-existent file
-	_, err := client.calculateAudioDuration("/non/existent/file.wav")
+	_, err := client.calculateMP3Duration("/non/existent/file.mp3")
 	if err == nil {
 		t.Error("Expected error for non-existent file")
 	}
 
-	if !strings.Contains(err.Error(), "failed to open WAV file") {
-		t.Errorf("Expected 'failed to open WAV file' error, got: %v", err)
+	if !strings.Contains(err.Error(), "failed to get MP3 file info") {
+		t.Errorf("Expected 'failed to get MP3 file info' error, got: %v", err)
 	}
 }
 
@@ -746,12 +746,18 @@ func TestSpeedParameterValidation(t *testing.T) {
 // TestCustomVoiceSettingsStructure tests the custom voice settings structure
 func TestCustomVoiceSettingsStructure(t *testing.T) {
 	// Test that our custom voice settings can be properly marshaled to JSON
+	stability := 0.7
+	similarityBoost := 0.9
+	style := 0.2
+	speed := 1.5
+	speakerBoost := true
+	
 	settings := CustomVoiceSettings{
-		Stability:       0.7,
-		SimilarityBoost: 0.9,
-		Style:           0.2,
-		Speed:           1.5,
-		SpeakerBoost:    true,
+		Stability:       &stability,
+		SimilarityBoost: &similarityBoost,
+		Style:           &style,
+		Speed:           &speed,
+		SpeakerBoost:    &speakerBoost,
 	}
 
 	// Test that the struct can be used in a request
@@ -762,23 +768,23 @@ func TestCustomVoiceSettingsStructure(t *testing.T) {
 	}
 
 	// Verify fields are accessible
-	if request.VoiceSettings.Speed != 1.5 {
-		t.Errorf("Expected speed 1.5, got %f", request.VoiceSettings.Speed)
+	if request.VoiceSettings.Speed == nil || *request.VoiceSettings.Speed != 1.5 {
+		t.Errorf("Expected speed 1.5, got %v", request.VoiceSettings.Speed)
 	}
 
-	if request.VoiceSettings.Stability != 0.7 {
-		t.Errorf("Expected stability 0.7, got %f", request.VoiceSettings.Stability)
+	if request.VoiceSettings.Stability == nil || *request.VoiceSettings.Stability != 0.7 {
+		t.Errorf("Expected stability 0.7, got %v", request.VoiceSettings.Stability)
 	}
 
-	if request.VoiceSettings.SimilarityBoost != 0.9 {
-		t.Errorf("Expected similarity boost 0.9, got %f", request.VoiceSettings.SimilarityBoost)
+	if request.VoiceSettings.SimilarityBoost == nil || *request.VoiceSettings.SimilarityBoost != 0.9 {
+		t.Errorf("Expected similarity boost 0.9, got %v", request.VoiceSettings.SimilarityBoost)
 	}
 
-	if request.VoiceSettings.Style != 0.2 {
-		t.Errorf("Expected style 0.2, got %f", request.VoiceSettings.Style)
+	if request.VoiceSettings.Style == nil || *request.VoiceSettings.Style != 0.2 {
+		t.Errorf("Expected style 0.2, got %v", request.VoiceSettings.Style)
 	}
 
-	if !request.VoiceSettings.SpeakerBoost {
+	if request.VoiceSettings.SpeakerBoost == nil || !*request.VoiceSettings.SpeakerBoost {
 		t.Error("Expected speaker boost to be true")
 	}
 }

@@ -488,6 +488,11 @@ func (c *ClaudeClient) formatWeatherContext(weather *ForecastResponse, location 
 		return "", fmt.Errorf("failed to extract today's weather: %w", err)
 	}
 
+	// Override location if provided
+	if location != "" {
+		todayData.Location = location
+	}
+
 	return c.formatWeatherContextFromExtracted(todayData)
 }
 
@@ -564,6 +569,9 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	notes = append(notes, fmt.Sprintf("Broadcast time: %s (%s)", 
 		now.Format("Monday, January 2 at 3:04 PM"), timeOfDay))
 	
+	// Radio broadcast guidance
+	notes = append(notes, "Use radio-friendly tone - conversational, clear, and engaging")
+	
 	// Day of week context
 	weekday := now.Weekday()
 	isWeekend := weekday == time.Saturday || weekday == time.Sunday
@@ -599,8 +607,8 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 			notes = append(notes, "Spring rain - mention gardening, growth, renewal themes")
 		}
 	case "summer":
-		if todayData.CurrentTemp > 85 {
-			notes = append(notes, "Hot weather - emphasize hydration, cooling, outdoor safety")
+		if todayData.TempHigh > 85 || todayData.CurrentTemp > 85 {
+			notes = append(notes, "Hot day - emphasize hydration, cooling, outdoor safety")
 		}
 		notes = append(notes, "Summer season - highlight outdoor events, vacation weather, beach/pool conditions")
 	case "fall":
@@ -621,8 +629,31 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	}
 	
 	// Weather-specific contextual notes
-	if todayData.RainChance > 0.5 {
+	if todayData.RainChance > 0.7 {
+		notes = append(notes, "Rain is likely - emphasize umbrella/rain gear, indoor alternatives")
+	} else if todayData.RainChance > 0.5 {
 		notes = append(notes, "High rain probability - emphasize umbrella/rain gear, indoor alternatives")
+	} else if todayData.RainChance < 0.3 {
+		notes = append(notes, "Rain is unlikely - good day for outdoor activities")
+	}
+	
+	// Temperature-specific guidance (regardless of season)
+	hotThreshold := 85.0  // Fahrenheit
+	coldThreshold := 32.0 // Fahrenheit
+	coolThreshold := 50.0 // Fahrenheit
+	
+	if todayData.Units == "metric" {
+		hotThreshold = 29.0   // ~85°F in Celsius
+		coldThreshold = 0.0   // Freezing in Celsius
+		coolThreshold = 10.0  // ~50°F in Celsius
+	}
+	
+	if todayData.TempHigh > hotThreshold || todayData.CurrentTemp > hotThreshold {
+		notes = append(notes, "Hot day - emphasize hydration, cooling, outdoor safety")
+	} else if todayData.TempHigh < coldThreshold || todayData.CurrentTemp < coldThreshold {
+		notes = append(notes, "Freezing temperatures - mention cold weather precautions")
+	} else if todayData.TempHigh < coolThreshold {
+		notes = append(notes, "Cool day - suggest layered clothing")
 	}
 	
 	if todayData.CurrentTemp != 0 && todayData.TempHigh != 0 {

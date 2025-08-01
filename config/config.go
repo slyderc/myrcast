@@ -62,6 +62,17 @@ type ElevenLabs struct {
 	RateLimit   int     `toml:"rate_limit"`    // Requests per minute
 }
 
+// Logging contains logging configuration with rotation and cross-platform support
+type Logging struct {
+	Enabled         bool   `toml:"enabled"`          // Enable file logging
+	Directory       string `toml:"directory"`        // Log directory (relative or absolute)
+	FilenamePattern string `toml:"filename_pattern"` // Log filename with date patterns
+	Level           string `toml:"level"`            // Log level: debug, info, warn, error
+	MaxFiles        int    `toml:"max_files"`        // Number of log files to keep
+	MaxSizeMB       int    `toml:"max_size_mb"`      // Rotate when file exceeds this size
+	ConsoleOutput   bool   `toml:"console_output"`   // Also output to console
+}
+
 // Config represents the complete application configuration
 type Config struct {
 	APIs       APIs       `toml:"apis"`
@@ -70,6 +81,7 @@ type Config struct {
 	Prompt     Prompt     `toml:"prompt"`
 	Claude     Claude     `toml:"claude"`
 	ElevenLabs ElevenLabs `toml:"elevenlabs"`
+	Logging    Logging    `toml:"logging"`
 }
 
 // LoadConfig reads and parses a TOML configuration file
@@ -181,6 +193,27 @@ func (c *Config) ApplyDefaults() {
 	if c.ElevenLabs.RateLimit <= 0 {
 		c.ElevenLabs.RateLimit = 20 // Conservative rate limit for ElevenLabs
 	}
+
+	// Default logging settings
+	// Enable logging by default for production use
+	// Note: Explicitly set to false in config if you don't want logging
+	
+	if strings.TrimSpace(c.Logging.Directory) == "" {
+		c.Logging.Directory = "logs"
+	}
+	if strings.TrimSpace(c.Logging.FilenamePattern) == "" {
+		c.Logging.FilenamePattern = "myrcast-YYYYMMDD.log"
+	}
+	if strings.TrimSpace(c.Logging.Level) == "" {
+		c.Logging.Level = "info"
+	}
+	if c.Logging.MaxFiles <= 0 {
+		c.Logging.MaxFiles = 7 // Keep 7 days of logs by default
+	}
+	if c.Logging.MaxSizeMB <= 0 {
+		c.Logging.MaxSizeMB = 10 // 10MB default rotation size
+	}
+	// ConsoleOutput defaults to false for production, can be enabled in config
 }
 
 // ConfigNotFoundError represents a missing configuration file
@@ -234,6 +267,11 @@ func (c *Config) Validate() error {
 
 	// Validate ElevenLabs settings
 	if err := c.validateElevenLabs(); err != nil {
+		errors = append(errors, err...)
+	}
+
+	// Validate logging settings
+	if err := c.validateLogging(); err != nil {
 		errors = append(errors, err...)
 	}
 
@@ -516,6 +554,69 @@ func (c *Config) validateElevenLabs() []ValidationError {
 	return errors
 }
 
+// validateLogging checks logging configuration
+func (c *Config) validateLogging() []ValidationError {
+	var errors []ValidationError
+
+	// Validate log level
+	validLevels := []string{"debug", "info", "warn", "error"}
+	level := strings.ToLower(strings.TrimSpace(c.Logging.Level))
+	if level != "" {
+		valid := false
+		for _, validLevel := range validLevels {
+			if level == validLevel {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			errors = append(errors, ValidationError{
+				Field:   "logging.level",
+				Message: fmt.Sprintf("level must be one of: %s, got '%s'", strings.Join(validLevels, ", "), c.Logging.Level),
+			})
+		}
+	}
+
+	// Validate max files
+	if c.Logging.MaxFiles < 0 || c.Logging.MaxFiles > 365 {
+		errors = append(errors, ValidationError{
+			Field:   "logging.max_files",
+			Message: fmt.Sprintf("max_files must be between 0 and 365, got %d", c.Logging.MaxFiles),
+		})
+	}
+
+	// Validate max size
+	if c.Logging.MaxSizeMB < 0 || c.Logging.MaxSizeMB > 1000 {
+		errors = append(errors, ValidationError{
+			Field:   "logging.max_size_mb",
+			Message: fmt.Sprintf("max_size_mb must be between 0 and 1000, got %d", c.Logging.MaxSizeMB),
+		})
+	}
+
+	// Validate directory if logging is enabled
+	if c.Logging.Enabled {
+		if strings.TrimSpace(c.Logging.Directory) == "" {
+			errors = append(errors, ValidationError{
+				Field:   "logging.directory",
+				Message: "directory is required when logging is enabled",
+			})
+		}
+
+		if strings.TrimSpace(c.Logging.FilenamePattern) == "" {
+			errors = append(errors, ValidationError{
+				Field:   "logging.filename_pattern",
+				Message: "filename_pattern is required when logging is enabled",
+			})
+		} else {
+			// Note: We can't import internal/logger from config package due to circular dependency
+			// The validation will be done in the logger package when initializing
+			// This is intentional to keep config package independent
+		}
+	}
+
+	return errors
+}
+
 // GenerateSampleConfig creates a sample configuration file at the specified path
 func GenerateSampleConfig(configPath string) error {
 	sampleConfig := `# Myrcast Configuration File
@@ -597,6 +698,20 @@ max_delay_ms = 30000
 
 # Rate limiting (requests per minute)
 rate_limit = 20
+
+[logging]
+# Cross-platform file logging with rotation and enhanced validation
+# Essential for production use and debugging
+enabled = true                              # Enable file logging
+directory = "logs"                          # Log directory (relative to working dir or absolute path)
+                                           # Windows default: %APPDATA%\Myrcast\logs  
+                                           # macOS default: ~/.myrcast/logs
+filename_pattern = "myrcast-YYYYMMDD.log"  # Daily rotation pattern
+                                           # YYYY=year, MM=month, DD=day, HH=hour, MM=minute
+level = "info"                             # Log level: debug, info, warn, error
+max_files = 7                              # Keep 7 days of logs (0 = unlimited)
+max_size_mb = 10                           # Rotate when file exceeds 10MB (0 = unlimited)  
+console_output = true                      # Also output to console (helpful for debugging)
 `
 
 	// Create directory if it doesn't exist
