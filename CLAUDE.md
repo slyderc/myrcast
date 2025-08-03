@@ -4,158 +4,136 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Myrcast is an AI-powered weather report generator designed for radio broadcast automation. It integrates with the OpenWeather API, Anthropic Claude AI, and ElevenLabs text-to-speech to create professional weather reports for radio stations using systems like Myriad.
-
-**Architecture:** Go CLI application with modular API clients and configuration management.
+Myrcast is an AI-powered weather report generator for radio broadcast automation. It fetches weather data from OpenWeather API, generates natural-sounding weather reports using Anthropic Claude, and converts them to speech using ElevenLabs TTS. The output WAV files are designed for import into Myriad radio automation systems.
 
 ## Development Commands
 
-### Build Commands
+### Building and Testing
 ```bash
 # Build for current platform
 make build
 
-# Build for all platforms
-make build-all
-
-# Build with debug symbols
-make build-debug
-
-# Cross-platform builds
-make build-windows    # Windows executable
-make build-macos      # macOS (Intel and Apple Silicon)
-make build-linux      # Linux (amd64 and arm64)
-```
-
-### Testing Commands
-```bash
-# Run all tests
-make test
-
-# Run unit tests only
-make test-unit
-
-# Run tests with coverage
+# Run all tests with coverage
 make test-coverage
 
-# Generate HTML coverage report
-make test-coverage-html
+# Run tests with verbose output and race detection
+make test
 
-# Run integration tests (requires INTEGRATION_TEST=true)
-make test-integration
-
-# Run benchmarks
-make test-bench
-```
-
-### Code Quality Commands
-```bash
-# Format code
-make fmt
-
-# Run go vet
-make vet
-
-# Run linters (requires golangci-lint)
-make lint
-
-# Run all checks (format, vet, lint)
+# Format, vet, and lint code
 make check
 
-# Run staticcheck (requires staticcheck)
-make staticcheck
-```
-
-### Development Commands
-```bash
 # Run with development config
 make run
 
-# Run with debug logging
-make run-debug
-
-# Generate sample configuration
+# Generate configuration file
 make generate-config
-
-# Install development tools
-make install-tools
 ```
 
-### Single Test Execution
+### Cross-Platform Builds
 ```bash
-# Run specific test
-go test -v ./config -run TestLoadConfig
+# Build for all platforms
+make build-all
 
-# Run specific package tests
-go test -v ./api
-
-# Run test with specific tags
-go test -tags=integration -v ./...
+# Build platform-specific
+make build-windows
+make build-macos  
+make build-linux
 ```
 
-## Core Architecture
+### Development Tools
+- Install linting tools: `make install-tools`
+- Check dependencies: `make check-deps`
+- Clean build artifacts: `make clean`
 
-### Main Application Flow (`main.go:364-507`)
-1. **Initialization**: Parse CLI flags, configure logging, load TOML configuration
-2. **API Client Setup**: Initialize weather, Claude, and ElevenLabs clients with rate limiting
-3. **Weather Data Retrieval**: Fetch current weather and forecast data from OpenWeather API  
-4. **AI Script Generation**: Use Claude to generate natural weather report script from weather data and prompt template
-5. **Speech Synthesis**: Convert generated script to audio using ElevenLabs TTS
-6. **Output Management**: Save final WAV file to configured import directory for radio automation
+## Architecture
 
-### Key Components
+### Core Components
 
-**Configuration System (`config/config.go`)**
-- TOML-based configuration with comprehensive validation
-- Cross-platform path handling and directory creation
-- API key management for OpenWeather, Anthropic, and ElevenLabs
-- Logging configuration with file rotation
-- Default value application and validation rules
+**Main Application (`main.go`)**
+- CLI flag handling and configuration loading
+- Orchestrates the complete workflow in `runWeatherReportWorkflow()`
+- Comprehensive error handling with specific exit codes
+- Cross-platform path validation for Windows/Unix
 
-**API Clients (`api/` directory)**
-- `weather.go`: OpenWeather API client with rate limiting and retry logic
-- `claude.go`: Anthropic Claude client for natural language generation  
-- `elevenlabs.go`: ElevenLabs client for text-to-speech synthesis
-- Each client includes exponential backoff, rate limiting, and error handling
+**API Clients (`api/` package)**
+- `weather.go`: OpenWeather API client with rate limiting and caching
+- `claude.go`: Anthropic Claude client with retry logic and rate limiting  
+- `elevenlabs.go`: ElevenLabs TTS client with audio processing
+- `weather_cache.go`: Daily weather data caching system
 
-**Internal Utilities (`internal/` directory)**
-- `logger/`: Enhanced logging with file rotation and cross-platform support
-- `errorutil/`: Error handling utilities for file operations, network, and validation
+**Configuration (`config/` package)**
+- TOML-based configuration with validation
+- Support for API keys, weather location, output paths, and logging
+- Cross-platform file path handling
+
+**Utilities (`internal/` package)**
+- `logger/`: Enhanced logging with rotation and structured output
+- `errorutil/`: Error handling utilities for network, file, and validation errors
 - `report/`: Report generation utilities
 
-### Configuration Requirements
+### Key Features
 
-The application requires three API keys in `config.toml`:
-- OpenWeather API key for weather data
-- Anthropic API key for AI text generation  
-- ElevenLabs API key for text-to-speech
+**Weather Data Caching**
+- Caches forecast data daily to reduce API costs (~70-80% savings)
+- Always fetches fresh current conditions for accuracy
+- Automatic cache expiration at midnight local time
 
-Sample configuration can be generated with:
-```bash
-./myrcast --generate-config
-```
+**Rate Limiting & Retries**
+- All API clients implement exponential backoff retry logic
+- Claude API: 50 requests/minute default limit
+- ElevenLabs: Configurable rate limiting
+- OpenWeather: Built-in retry with jitter
 
-### Key Design Patterns
+**Audio Processing**
+- Outputs broadcast-ready WAV files (44.1kHz, 16-bit, mono)
+- Direct output to configured import directory
+- No temporary file cleanup needed
 
-**Rate Limiting**: All API clients implement custom rate limiters to respect service limits
-**Retry Logic**: Exponential backoff with jitter for API failures
-**Cross-Platform**: Windows/macOS/Linux support with proper path handling
-**Validation**: Comprehensive configuration validation before execution
-**Logging**: Structured logging with rotation for production deployment
+## Configuration
 
-### Testing Strategy
+Uses TOML configuration files with these key sections:
+- `[apis]`: API keys for OpenWeather, Anthropic, ElevenLabs
+- `[weather]`: Latitude/longitude and units (metric/imperial/kelvin)
+- `[output]`: Import path and media ID for automation systems
+- `[prompt]`: AI instruction template for weather report style
+- `[claude]`: Model configuration and retry settings
+- `[elevenlabs]`: Voice settings and audio parameters
+- `[logging]`: File logging with rotation
+- `[cache]`: Weather cache file location
 
-- Unit tests for individual components (`*_test.go` files)
-- Integration tests requiring live API keys (use `INTEGRATION_TEST=true`)
-- Coverage reports generated in `coverage/` directory
-- Benchmarks for performance-critical operations
+## Testing Strategy
 
-### Output Format
+**Unit Tests**
+- All API clients have comprehensive test coverage
+- Mock external APIs for reliable testing
+- Configuration validation testing
+- Logging system testing
 
-Generates broadcast-ready WAV files with:
-- 44.1 kHz sample rate
-- 16-bit depth  
-- Mono channel (optimized for voice)
-- Configurable filename via `media_id` setting
+**Integration Tests**
+- Run with `INTEGRATION_TEST=true make test-integration`
+- Test real API interactions (requires valid API keys)
+- End-to-end workflow validation
 
-The application is designed for automated execution via cron/Task Scheduler for regular weather report generation.
+**Test File Patterns**
+- Unit tests: `*_test.go` files alongside source
+- Integration tests use build tag `//go:build integration`
+
+## Error Handling
+
+Uses specific exit codes for different error types:
+- `1`: General errors
+- `2`: Configuration file errors  
+- `3`: Configuration validation errors
+- `4`: API call failures
+- `5`: File system operation errors
+- `6`: Network connectivity errors
+
+## Development Notes
+
+- Go 1.21+ required
+- Uses go-resty for HTTP clients
+- TOML configuration via pelletier/go-toml/v2
+- Anthropic SDK for Claude API integration
+- Cross-platform file path handling throughout
+- Structured logging with operation tracking
+- All external dependencies are production-ready libraries

@@ -1,185 +1,227 @@
 # Myrcast - AI Weather Report Generator
 
-Myrcast is an automated weather report generator that creates AI-voiced weather reports for radio broadcast automation systems like Myriad. The application fetches current weather data and generates professional weather scripts using AI, then converts them to audio files ready for broadcast.
+Myrcast automatically generates professional AI-voiced weather reports for radio broadcast automation. Simply run the application and it creates broadcast-ready WAV files with current weather conditions, forecasts, and natural-sounding voice narration.
+
+Perfect for radio stations using Myriad automation or similar broadcast systems.
 
 ## System Requirements
 
-- Windows 10 or later
-- Internet connection for weather data and AI services
-- Myriad radio automation system (or compatible audio import system)
+- **Windows, macOS, or Linux** (64-bit)
+- **Internet connection** for weather data and AI services
+- **Radio automation system** (Myriad, etc.) for audio file import
 
-## Quick Setup
+## Quick Start
 
-1. **Download** the latest `myrcast.exe` from the releases page
-2. **Create** a configuration file named `config.toml` in the same directory
-3. **Configure** your API keys and settings (see Configuration section)
-4. **Run** `myrcast.exe` to generate your first weather report
+1. **Download** the latest Myrcast executable for your platform
+2. **Generate** a configuration file: `myrcast --generate-config`
+3. **Edit** `config.toml` with your API keys and location
+4. **Run** `myrcast` to create your first weather report
+
+Your generated WAV files will be saved to the configured directory, ready for broadcast automation.
 
 ## Configuration
 
-Create a `config.toml` file with the following structure:
+Myrcast uses a `config.toml` file for all settings. Generate a sample file with:
+
+```bash
+myrcast --generate-config
+```
+
+### Required API Keys
+
+You'll need three free API keys:
+
+**OpenWeather API** (weather data)
+- Visit [openweathermap.org/api](https://openweathermap.org/api)
+- Sign up for free account
+- Copy your API key to the config file
+
+**Anthropic Claude API** (AI text generation)
+- Visit [console.anthropic.com](https://console.anthropic.com/)
+- Create account and add billing
+- Generate API key and add to config
+
+**ElevenLabs API** (text-to-speech)
+- Visit [elevenlabs.io](https://elevenlabs.io/)
+- Sign up for free account
+- Get API key from your profile
+
+### Essential Settings
+
+Edit your `config.toml` file:
 
 ```toml
 [apis]
-# Get your OpenWeather API key at: https://openweathermap.org/api
 openweather = "your-openweather-api-key-here"
-
-# Get your Anthropic API key at: https://console.anthropic.com/
-anthropic = "your-anthropic-api-key-here"
+anthropic = "your-anthropic-api-key-here" 
+elevenlabs = "your-elevenlabs-api-key-here"
 
 [weather]
-# Your location coordinates (find yours at latlong.net)
-latitude = 40.7589  # Example: New York City
+# Your broadcast location coordinates
+latitude = 40.7589   # Example: New York City
 longitude = -73.9851
-units = "imperial"  # "metric", "imperial", or "kelvin"
+units = "imperial"   # "metric", "imperial", or "kelvin"
 
 [output]
-# Where temporary files are stored during processing
-temp_directory = "C:\\temp\\myrcast"
+# Where Myriad should import audio files
+import_path = "C:\\Myriad\\Import"  # Windows
+# import_path = "/Users/station/Myriad/Import"  # macOS
 
-# Where Myriad should import the generated audio files
-import_path = "C:\\Users\\YourName\\Documents\\Myrcast"
+# Audio filename (without extension)
+media_id = "weather_report"
+```
 
-[speech]
-# Voice settings for audio generation
-voice = "alloy"     # Voice ID for text-to-speech
-speed = 1.0         # Speech speed (0.1 to 4.0)
-format = "mp3_44100_128"  # Audio format
+### Weather Report Style
 
+Customize your weather report style in the `[prompt]` section. This is an **instruction** to the AI, not a template with variables:
+
+```toml
 [prompt]
-# Your custom weather report template (see Template Variables below)
-template = "Good morning! Here's your weather update for {{location}} on {{dow}}, {{date}}. Currently {{current_temp}} with {{current_conditions}}. Today's high will reach {{temp_high}} with a low of {{temp_low}}. Rain chance is {{rain_chance}}. {{wind_conditions}}. Have a great day!"
-
-[claude]
-# AI model settings
-model = "claude-3-5-sonnet-20241022"
-max_tokens = 1000
-temperature = 0.7
+template = "You are a professional radio weather announcer for morning drive time. Generate a 20-second weather report that's upbeat and informative. Include current conditions, today's high and low temperatures, and any weather to watch for. Use conversational language that sounds natural when spoken aloud."
 ```
 
-## Template Variables
+**Example styles:**
+- **Morning Show**: "You are a professional radio weather announcer for morning drive time..."
+- **Casual**: "You are a friendly local weather reporter with a relaxed, conversational style..."  
+- **News Format**: "You are a broadcast meteorologist delivering concise, authoritative weather updates..."
 
-Use these variables in your `[prompt]` template to automatically insert weather data:
+The AI automatically receives current weather data and incorporates it into the report based on your style instructions.
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `{{location}}` | Location name from configuration | "New York City" |
-| `{{city}}` | City name from weather data | "New York" |
-| `{{country}}` | Country code | "US" |
-| `{{current_temp}}` | Current temperature with units | "72°F" |
-| `{{temp_high}}` | Today's high temperature | "78°F" |
-| `{{temp_low}}` | Today's low temperature | "65°F" |
-| `{{current_conditions}}` | Current weather description | "partly cloudy" |
-| `{{wind_conditions}}` | Wind speed and direction | "Light SW winds at 8 mph" |
-| `{{rain_chance}}` | Precipitation probability | "20%" |
-| `{{weather_alerts}}` | Notable weather conditions | "thunderstorms possible" |
-| `{{date}}` | Today's date | "January 15" |
-| `{{dow}}` | Day of the week | "Monday" |
-| `{{time}}` | Current time | "9:30 AM" |
-| `{{units}}` | Temperature unit system | "imperial" |
+### Voice Settings
 
-## Example Weather Prompt Templates
+Choose your broadcast voice in the `[elevenlabs]` section:
 
-### 1. Professional Morning Show Format
 ```toml
-template = "Good morning {{location}}! It's {{time}} on {{dow}}, {{date}}. Your weather forecast shows {{current_conditions}} with {{current_temp}}. We're looking at a high of {{temp_high}} and a low tonight of {{temp_low}}. There's a {{rain_chance}} chance of precipitation today. {{wind_conditions}}. That's your weather update, stay tuned for more music!"
+[elevenlabs]
+voice_id = "pNInz6obpgDQGcFmaJgB"  # Professional male voice
+# voice_id = "EXAVITQu4vr4xnSDxMaL"  # Professional female voice
+speed = 1.0      # Speaking speed (0.7-1.2)
+stability = 0.5  # Voice consistency (0.0-1.0)
 ```
 
-### 2. Casual Drive-Time Style
-```toml
-template = "Hey {{location}}, happy {{dow}}! Right now it's {{current_temp}} and {{current_conditions}} out there. Today we'll hit {{temp_high}}, cooling down to {{temp_low}} tonight. Rain chances are looking at {{rain_chance}}. {{wind_conditions}}. Drive safe out there and have a great day!"
-```
-
-### 3. Detailed Weather Report
-```toml
-template = "This is your comprehensive weather outlook for {{location}} on {{dow}}, {{date}}. Current conditions show {{current_temp}} with {{current_conditions}}. Today's forecast calls for a high temperature of {{temp_high}} and an overnight low of {{temp_low}}. Precipitation probability stands at {{rain_chance}}. Wind conditions: {{wind_conditions}}. Weather alerts: {{weather_alerts}}. For updated forecasts, stay tuned to your weather station."
-```
+Browse available voices at [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library)
 
 ## Running Myrcast
 
-### Command Line Usage
-```cmd
-# Generate a weather report with default settings
-myrcast.exe
+### Basic Usage
 
-# Use a specific configuration file
-myrcast.exe --config "C:\path\to\your\config.toml"
+```bash
+# Generate weather report with default config
+myrcast
 
-# Generate sample configuration file
-myrcast.exe --generate-config
+# Use specific configuration file  
+myrcast --config /path/to/station.toml
+
+# Test configuration without generating audio
+myrcast --dry-run
+
+# Run with detailed output for troubleshooting
+myrcast --verbose
 ```
 
-### Scheduled Automation
-Set up Windows Task Scheduler to run Myrcast automatically:
+### Scheduling Automation
 
-1. Open **Task Scheduler**
-2. Create **Basic Task**
-3. Set trigger (e.g., "Daily at 6:00 AM")
-4. Set action to run `myrcast.exe`
-5. Configure Myriad to auto-import from your `import_path`
+**Windows (Task Scheduler):**
+1. Open Task Scheduler
+2. Create Basic Task → Daily → Set time (e.g., 6:00 AM, 12:00 PM, 6:00 PM)
+3. Start Program → Browse to `myrcast.exe`
+4. Configure Myriad to auto-import from your `import_path`
+
+**macOS/Linux (cron):**
+```bash
+# Edit crontab
+crontab -e
+
+# Run every 6 hours at :00 minutes
+0 */6 * * * /path/to/myrcast
+
+# Run weekdays at 6 AM, noon, and 6 PM
+0 6,12,18 * * 1-5 /path/to/myrcast
+```
 
 ## Output Files
 
-Myrcast generates audio files in your configured `import_path` with naming format:
-- `weather_report_YYYYMMDD_HHMMSS.wav`
-- Example: `weather_report_20240115_063000.wav`
+Myrcast creates broadcast-ready WAV files:
 
-Configure Myriad to monitor this directory for automatic import and scheduling.
+- **Filename**: `weather_report.wav` (configurable via `media_id`)
+- **Format**: 44.1 kHz, 16-bit, mono
+- **Location**: Your configured `import_path` directory
+- **Duration**: Typically 15-30 seconds
+
+Configure your automation system to monitor the `import_path` directory for new files.
 
 ## Weather Data Caching
 
-Myrcast includes an intelligent caching system that reduces API usage while maintaining broadcast quality:
+Myrcast intelligently caches weather data to reduce API costs:
 
-### How It Works
-- **First run of the day**: Fetches complete forecast data and caches daily values (high/low temps, sunrise/sunset)
-- **Subsequent runs**: Uses cached forecast data + fetches fresh current conditions
-- **Automatic expiry**: Cache resets at midnight (local time) for the next day
+- **First run of day**: Fetches complete forecast data
+- **Later runs**: Uses cached forecasts + live current conditions  
+- **Automatic reset**: Cache expires at midnight local time
+- **Savings**: ~70-80% fewer API calls
+- **Transparency**: No configuration needed, works automatically
 
-### Benefits
-- **Reduced API costs**: ~70-80% fewer OpenWeather API calls
-- **Faster execution**: Cached runs complete significantly faster
-- **Current accuracy**: Live conditions (temperature, alerts, precipitation) always fresh
-- **Transparent operation**: No configuration required - works automatically
+Current conditions (temperature, alerts, precipitation) are always fetched fresh for accuracy.
 
-### Cache Configuration
-```toml
-[cache]
-# Leave empty for automatic temp directory (recommended)
-file_path = ""
+## Common Issues
 
-# Or specify custom location
-# file_path = "C:\\myrcast\\weather-cache.toml"
+**"No audio file created"**
+- Check that `import_path` directory exists and is writable
+- Verify all three API keys are valid
+- Run with `--verbose` to see detailed error messages
+
+**"API key invalid" errors**
+- Double-check API keys have no extra spaces or characters
+- Ensure Claude and ElevenLabs accounts have available credits
+- OpenWeather free tier allows 1000 calls/day
+
+**"Location not found"**
+- Verify latitude/longitude coordinates are correct
+- Use [latlong.net](https://latlong.net) to find exact coordinates
+- Check coordinates use decimal format (e.g., 40.7589, not 40°45'32"N)
+
+**Audio quality issues**
+- Try different `voice_id` values from ElevenLabs voice library
+- Adjust `speed` (0.7-1.2) and `stability` (0.0-1.0) settings
+- Ensure good internet connection for ElevenLabs API
+
+**Scheduling problems**
+- Test manual runs first: `myrcast --dry-run` then `myrcast`
+- Check file permissions for automation user account
+- Verify automation system can access the `import_path` directory
+
+## Advanced Configuration
+
+### Multiple Locations
+Create separate config files for different broadcast areas:
+```bash
+myrcast --config downtown.toml
+myrcast --config suburbs.toml  
+myrcast --config coastal.toml
 ```
 
-The cache file stores forecast data in TOML format and automatically handles:
-- Day boundary detection using local timezone
-- Location validation to ensure cache matches current coordinates
-- Graceful fallback to full API calls if cache is corrupted or unavailable
+### Custom Logging
+Monitor system health with detailed logs:
+```toml
+[logging]
+enabled = true
+directory = "C:\\Myriad\\Logs\\Weather"
+level = "info"           # "debug" for troubleshooting
+max_files = 30          # Keep 30 days of logs
+console_output = false  # Disable for scheduled runs
+```
 
-## API Keys Setup
-
-### OpenWeather API
-1. Visit [openweathermap.org/api](https://openweathermap.org/api)
-2. Sign up for a free account
-3. Generate an API key
-4. Add it to your `config.toml` file
-
-### Anthropic Claude API
-1. Visit [console.anthropic.com](https://console.anthropic.com/)
-2. Create an account and add billing information
-3. Generate an API key
-4. Add it to your `config.toml` file
-
-## Troubleshooting
-
-**No audio output**: Check your `import_path` directory exists and is writable
-
-**API errors**: Verify your API keys are valid and have sufficient credits
-
-**Location not found**: Double-check your latitude/longitude coordinates
-
-**Template not working**: Ensure variables use `{{variable}}` format with double braces
+### Cache Location
+Customize weather cache storage:
+```toml
+[cache]
+# Default: uses system temp directory
+file_path = "C:\\Myriad\\Cache\\weather.toml"
+```
 
 ## Support
 
-For technical support or feature requests, please check the project documentation or contact your system administrator.
+- **Troubleshooting**: Run `myrcast --verbose` for detailed error information
+- **Configuration**: Use `myrcast --generate-config` to create fresh config files
+- **Testing**: Use `myrcast --dry-run` to validate setup without generating audio
+
+For broadcast integration support, consult your automation system documentation for audio file import configuration.

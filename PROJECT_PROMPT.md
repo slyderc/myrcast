@@ -42,7 +42,6 @@ units = imperial  # metric or imperial
 
 [output]
 media_id = 12345
-temp_directory = "C:\temp\myrcast"
 myriad_import_directory = "C:\Myriad\Import"
 log_file = "C:\Program Files\Myrcast\myrcast.log"
 

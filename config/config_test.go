@@ -25,7 +25,6 @@ longitude = -122.4194
 units = "imperial"
 
 [output]
-temp_directory = "/tmp/test"
 import_path = "/tmp/test/import"
 media_id = "test_report"
 
@@ -145,7 +144,6 @@ longitude = -122.4194
 units = "imperial"
 
 [output]
-temp_directory = "/tmp/test"
 import_path = "/tmp/test/import"
 media_id = "test_report"
 
@@ -246,9 +244,8 @@ func TestElevenLabsFormatValidation(t *testing.T) {
 					Units:     "imperial",
 				},
 				Output: Output{
-					TempDirectory: "/tmp/test",
-					ImportPath:    "/tmp/test/import",
-					MediaID:       "test_report",
+					ImportPath: "/tmp/test/import",
+					MediaID:    "test_report",
 				},
 				Prompt: Prompt{
 					Template: "Test template",
@@ -304,7 +301,7 @@ latitude = 37.7749
 longitude = -122.4194
 
 [output]
-temp_directory = "/tmp/test"
+import_path = "/tmp/test"
 `
 
 	err := os.WriteFile(configPath, []byte(minimalConfig), 0644)
@@ -421,7 +418,6 @@ longitude = -122.4194
 units = "imperial"
 
 [output]
-temp_directory = "/tmp/test"
 import_path = "/tmp/test/import"
 media_id = "test_report"
 
@@ -498,7 +494,6 @@ longitude = -122.4194
 units = "imperial"
 
 [output]
-temp_directory = "/tmp/test"
 import_path = "/tmp/test/import"
 media_id = "test_report"
 
@@ -625,9 +620,8 @@ func TestLoggingValidationErrors(t *testing.T) {
 					Units:     "imperial",
 				},
 				Output: Output{
-					TempDirectory: "/tmp/test",
-					ImportPath:    "/tmp/test/import",
-					MediaID:       "test_report",
+					ImportPath: "/tmp/test/import",
+					MediaID:    "test_report",
 				},
 				Prompt: Prompt{
 					Template: "Test template",

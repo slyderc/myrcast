@@ -26,9 +26,8 @@ type Weather struct {
 
 // Output contains output path configurations
 type Output struct {
-	TempDirectory string `toml:"temp_directory"`
-	ImportPath    string `toml:"import_path"`
-	MediaID       string `toml:"media_id"` // Base filename for generated audio (without extension)
+	ImportPath string `toml:"import_path"`
+	MediaID    string `toml:"media_id"` // Base filename for generated audio (without extension)
 }
 
 // Prompt contains AI prompt template configuration
@@ -126,15 +125,6 @@ func (c *Config) ApplyDefaults() {
 		c.Weather.Units = "imperial"
 	}
 
-	// Default temp directory
-	if strings.TrimSpace(c.Output.TempDirectory) == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			c.Output.TempDirectory = filepath.Join(os.TempDir(), "myrcast")
-		} else {
-			c.Output.TempDirectory = filepath.Join(homeDir, ".myrcast", "temp")
-		}
-	}
 
 	// Default import path
 	if strings.TrimSpace(c.Output.ImportPath) == "" {
@@ -391,34 +381,6 @@ func (c *Config) validateWeather() []ValidationError {
 func (c *Config) validateOutput() []ValidationError {
 	var errors []ValidationError
 
-	// Validate temp directory
-	if strings.TrimSpace(c.Output.TempDirectory) == "" {
-		errors = append(errors, ValidationError{
-			Field:   "output.temp_directory",
-			Message: "temp directory path is required",
-		})
-	} else {
-		// Check if directory exists or can be created
-		tempDir := filepath.Clean(c.Output.TempDirectory)
-		if err := os.MkdirAll(tempDir, 0755); err != nil {
-			errors = append(errors, ValidationError{
-				Field:   "output.temp_directory",
-				Message: fmt.Sprintf("cannot create temp directory: %v", err),
-			})
-		} else {
-			// Check if directory is writable
-			testFile := filepath.Join(tempDir, ".write_test")
-			if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-				errors = append(errors, ValidationError{
-					Field:   "output.temp_directory",
-					Message: fmt.Sprintf("temp directory is not writable: %v", err),
-				})
-			} else {
-				// Clean up test file
-				os.Remove(testFile)
-			}
-		}
-	}
 
 	// Validate import path
 	if strings.TrimSpace(c.Output.ImportPath) == "" {
@@ -638,13 +600,8 @@ func (c *Config) validateLogging() []ValidationError {
 func (c *Config) validateCache() []ValidationError {
 	var errors []ValidationError
 
-	// Validate cache file path
-	if strings.TrimSpace(c.Cache.FilePath) == "" {
-		errors = append(errors, ValidationError{
-			Field:   "cache.file_path",
-			Message: "cache file path is required",
-		})
-	} else {
+	// Validate cache file path (only if specified, empty uses default)
+	if strings.TrimSpace(c.Cache.FilePath) != "" {
 		// Ensure the parent directory exists and is writable
 		cacheDir := filepath.Dir(c.Cache.FilePath)
 		if cacheDir != "." && cacheDir != "" {
@@ -697,9 +654,6 @@ longitude = -122.4194
 units = "imperial"
 
 [output]
-# Directory for temporary files
-temp_directory = "/tmp/myrcast"
-
 # Directory where Myriad should import generated content
 import_path = "/Users/username/Documents/Myrcast"
 

@@ -22,7 +22,7 @@ go.work
 config.toml
 dev.toml
 *.toml
-!example-*.toml
+!example-config.toml
 
 # Environment files
 .env
