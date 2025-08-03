@@ -271,6 +271,13 @@ func (c *ClaudeClient) GenerateWeatherReport(ctx context.Context, request Weathe
 
 	complete(nil)
 
+	// Log the generated script to results.log
+	if err := c.appendScriptToLog(request, script); err != nil {
+		logger.LogWithFields(logger.WarnLevel, "Failed to append script to log file", map[string]any{
+			"error": err.Error(),
+		})
+	}
+
 	return &WeatherReportResponse{
 		Script:      script,
 		TokensUsed:  int(resp.Usage.OutputTokens),
@@ -566,27 +573,26 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	// Time of day context
 	hour := now.Hour()
 	timeOfDay := c.getTimeOfDay(now)
-	notes = append(notes, fmt.Sprintf("Broadcast time: %s (%s)", 
-		now.Format("Monday, January 2 at 3:04 PM"), timeOfDay))
+	notes = append(notes, fmt.Sprintf("Broadcast time of day: %s", timeOfDay))
 	
 	// Radio broadcast guidance
-	notes = append(notes, "Use radio-friendly tone - conversational, clear, and engaging")
+	notes = append(notes, "Use radio-friendly tone: conversational, clear, fun, and very engaging")
 	
 	// Day of week context
 	weekday := now.Weekday()
 	isWeekend := weekday == time.Saturday || weekday == time.Sunday
 	if isWeekend {
-		notes = append(notes, "Weekend broadcast - consider more relaxed, leisure-focused tone")
+		notes = append(notes, "Weekend broadcast: consider more relaxed, leisure-focused tone")
 	} else {
 		switch {
 		case hour >= 6 && hour < 9:
-			notes = append(notes, "Morning commute time - focus on travel conditions and daily planning")
+			notes = append(notes, "Morning commute time: focus on travel conditions and daily planning")
 		case hour >= 17 && hour < 19:
-			notes = append(notes, "Evening commute time - emphasize evening and tomorrow's outlook")
+			notes = append(notes, "Evening commute time: emphasize evening and tomorrow's outlook")
 		case hour >= 9 && hour < 17:
-			notes = append(notes, "Business hours - professional tone, brief and informative")
+			notes = append(notes, "Business hours: consider more brief and informative")
 		default:
-			notes = append(notes, "Off-peak hours - consider more conversational, detailed approach")
+			notes = append(notes, "Off-peak hours: consider more conversational, detailed approach")
 		}
 	}
 	
@@ -600,9 +606,9 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 		if todayData.CurrentTemp < 32 { // Below freezing
 			notes = append(notes, "Cold weather alert - emphasize warming layers, ice/snow conditions")
 		}
-		notes = append(notes, "Winter season - mention heating costs, winter activities, holiday travel if applicable")
+		notes = append(notes, "Winter season - mention heating costs, winter activity fun, holiday travel if applicable")
 	case "spring":
-		notes = append(notes, "Spring season - focus on changing conditions, outdoor activities resuming")
+		notes = append(notes, "Spring season - focus on changing conditions, outdoor activities starting")
 		if todayData.RainChance > 0.3 {
 			notes = append(notes, "Spring rain - mention gardening, growth, renewal themes")
 		}
@@ -610,7 +616,7 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 		if todayData.TempHigh > 85 || todayData.CurrentTemp > 85 {
 			notes = append(notes, "Hot day - emphasize hydration, cooling, outdoor safety")
 		}
-		notes = append(notes, "Summer season - highlight outdoor events, vacation weather, beach/pool conditions")
+		notes = append(notes, "Summer season - highlight outdoor events, vacation weather, beach/pool conditions, time-off from work")
 	case "fall":
 		notes = append(notes, "Fall season - mention changing leaves, back-to-school, harvest themes")
 		if todayData.WindConditions != "" && strings.Contains(strings.ToLower(todayData.WindConditions), "wind") {
@@ -622,9 +628,9 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	if c.isHoliday(now) {
 		holidayName := c.getHolidayName(now)
 		if holidayName != "" {
-			notes = append(notes, fmt.Sprintf("Holiday broadcast (%s) - incorporate festive elements, travel considerations", holidayName))
+			notes = append(notes, fmt.Sprintf("Holiday broadcast for %s - incorporate festive elements, travel considerations", holidayName))
 		} else {
-			notes = append(notes, "Holiday period - consider festive tone and travel weather impacts")
+			notes = append(notes, "Holiday period - consider festive tone and travel weather impacts where appropriate")
 		}
 	}
 	
@@ -634,7 +640,7 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	} else if todayData.RainChance > 0.5 {
 		notes = append(notes, "High rain probability - emphasize umbrella/rain gear, indoor alternatives")
 	} else if todayData.RainChance < 0.3 {
-		notes = append(notes, "Rain is unlikely - good day for outdoor activities")
+		notes = append(notes, "Rain is unlikely - good day for outdoor activities in a seasonal context")
 	}
 	
 	// Temperature-specific guidance (regardless of season)
@@ -688,7 +694,7 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	
 	// Broadcast timing urgency
 	if c.isUrgentTime(now) {
-		notes = append(notes, "Peak listening time - prioritize essential information, keep engaging but concise")
+		notes = append(notes, "Peak listening time! Prioritize essential information, keep engaging and fun but concise")
 	}
 	
 	return notes
@@ -991,6 +997,53 @@ Temperature: %.2f
 	logger.LogWithFields(logger.InfoLevel, "Claude prompt logged to file", map[string]any{
 		"log_file": logFilePath,
 		"location": request.Location,
+	})
+
+	return nil
+}
+
+// appendScriptToLog appends the generated Claude script to the results.log file
+func (c *ClaudeClient) appendScriptToLog(request WeatherReportRequest, script string) error {
+	// Determine output directory from the request context
+	outputDir := request.OutputPath
+	if outputDir == "" {
+		outputDir = "." // Default to current directory
+	}
+	logFilePath := filepath.Join(outputDir, "results.log")
+
+	// Read the existing log content
+	content, err := os.ReadFile(logFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read existing results.log: %w", err)
+	}
+
+	// Find the "=== END LOG ENTRY ===" line and insert the script before it
+	existingContent := string(content)
+	endMarker := "=== END LOG ENTRY ==="
+	
+	// Check if the end marker exists
+	if !strings.Contains(existingContent, endMarker) {
+		return fmt.Errorf("end log entry marker not found in results.log")
+	}
+
+	// Create the script section
+	scriptSection := fmt.Sprintf(`
+=== CLAUDE WEATHER SCRIPT ===
+%s
+
+`, script)
+
+	// Insert the script section before the end marker
+	modifiedContent := strings.Replace(existingContent, endMarker, scriptSection+endMarker, 1)
+
+	// Write the modified content back to the file
+	if err := os.WriteFile(logFilePath, []byte(modifiedContent), 0644); err != nil {
+		return fmt.Errorf("failed to write updated results.log: %w", err)
+	}
+
+	logger.LogWithFields(logger.InfoLevel, "Claude script appended to log file", map[string]any{
+		"log_file":     logFilePath,
+		"script_length": len(script),
 	})
 
 	return nil

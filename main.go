@@ -32,6 +32,8 @@ const (
 )
 
 func main() {
+	startTime := time.Now()
+	
 	// Define command-line flags
 	configPath := flag.String("config", getDefaultConfigPath(), "Path to TOML configuration file")
 	logLevel := flag.String("log-level", "info", "Logging level (debug, info, warn, error)")
@@ -97,19 +99,28 @@ func main() {
 		os.Exit(ExitSuccess)
 	}
 
-	// Configure logging
-	level, err := logger.ParseLevel(*logLevel)
-	if err != nil {
-		logger.Warn("Invalid log level: %s, using default (info)", *logLevel)
-		level = logger.InfoLevel
+	// Configure enhanced logging before loading config
+	// Use basic console logging for config loading phase
+	tempLogConfig := logger.Config{
+		Enabled:         false, // Console only during startup
+		ConsoleOutput:   true,
+		Level:           *logLevel,
+		FilenamePattern: "myrcast-startup.log",
+		Directory:       "logs",
+		MaxFiles:        7,
+		MaxSizeMB:       10,
 	}
-	logger.SetLevel(level)
-
-	// Configure log output
+	
+	// Override with log file if specified
 	if *logFile != "" {
-		if err := logger.SetOutput(*logFile); err != nil {
-			logger.Error("Failed to set log file: %v", err)
-		}
+		tempLogConfig.Enabled = true
+		tempLogConfig.Directory = filepath.Dir(*logFile)
+		tempLogConfig.FilenamePattern = filepath.Base(*logFile)
+	}
+	
+	if err := logger.Initialize(tempLogConfig); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize logging: %v\n", err)
+		// Continue with fallback logging
 	}
 
 	// Application startup
@@ -135,7 +146,37 @@ func main() {
 		os.Exit(ExitValidationError)
 	}
 
-	logger.Info("Configuration loaded and validated from: %s", *configPath)
+	logger.Debug("Configuration loaded and validated from: %s", *configPath)
+	
+	// Reinitialize logging with configuration settings (unless overridden by command line)
+	finalLogConfig := logger.Config{
+		Enabled:         cfg.Logging.Enabled,
+		Directory:       cfg.Logging.Directory,
+		FilenamePattern: cfg.Logging.FilenamePattern,
+		Level:           cfg.Logging.Level,
+		MaxFiles:        cfg.Logging.MaxFiles,
+		MaxSizeMB:       cfg.Logging.MaxSizeMB,
+		ConsoleOutput:   cfg.Logging.ConsoleOutput,
+	}
+	
+	// Override config settings with command line flags
+	if *logLevel != "info" { // info is default, so only override if different
+		finalLogConfig.Level = *logLevel
+	}
+	if *logFile != "" {
+		finalLogConfig.Enabled = true
+		finalLogConfig.Directory = filepath.Dir(*logFile)
+		finalLogConfig.FilenamePattern = filepath.Base(*logFile)
+	}
+	
+	// Reinitialize logger with final configuration
+	if err := logger.Initialize(finalLogConfig); err != nil {
+		logger.Warn("Failed to reinitialize logging with config settings: %v", err)
+		// Continue with current logging setup
+	} else {
+		logger.Debug("Enhanced logging initialized from configuration")
+	}
+	
 	logger.Debug("Weather location: %.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude)
 	logger.Debug("Units: %s", cfg.Weather.Units)
 
@@ -155,19 +196,37 @@ func main() {
 	// Run the main weather report generation workflow
 	if err := runWeatherReportWorkflow(cfg); err != nil {
 		logger.Error("Weather report generation failed: %v", err)
-		// Exit with appropriate error code based on error type
-		if isAPIError(err) {
-			os.Exit(ExitAPIError)
-		} else if isNetworkError(err) {
-			os.Exit(ExitNetworkError)
-		} else if isFileSystemError(err) {
-			os.Exit(ExitFileSystemError)
-		} else {
-			os.Exit(ExitGeneralError)
+		
+		// Log execution summary for failed run
+		results := []string{
+			fmt.Sprintf("Weather report generation failed: %v", err),
 		}
+		
+		var exitCode int
+		if isAPIError(err) {
+			exitCode = ExitAPIError
+		} else if isNetworkError(err) {
+			exitCode = ExitNetworkError
+		} else if isFileSystemError(err) {
+			exitCode = ExitFileSystemError
+		} else {
+			exitCode = ExitGeneralError
+		}
+		
+		logger.Get().LogExecutionSummary(startTime, *configPath, "weather-report", results, exitCode)
+		os.Exit(exitCode)
 	}
 
 	logger.Info("Weather report generation completed successfully")
+	
+	// Log execution summary for successful run
+	results := []string{
+		"Weather report generation completed successfully",
+		fmt.Sprintf("Weather location: %.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude),
+		fmt.Sprintf("Output directory: %s", cfg.Output.ImportPath),
+	}
+	logger.Get().LogExecutionSummary(startTime, *configPath, "weather-report", results, ExitSuccess)
+	
 	os.Exit(ExitSuccess)
 }
 
@@ -306,10 +365,10 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	logger.Info("Starting weather report generation workflow")
+	logger.Debug("Starting weather report generation workflow")
 	
 	// Step 1: Initialize API clients
-	logger.Info("Initializing API clients...")
+	logger.Debug("Initializing API clients...")
 	
 	// Initialize Weather client
 	weatherClient := api.NewWeatherClientWithRateLimit(cfg.APIs.OpenWeather)
@@ -353,7 +412,11 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	}
 	logger.Debug("ElevenLabs client initialized")
 
-	// Step 2: Fetch weather data
+	// Step 2: Initialize cache manager
+	cacheManager := api.NewCacheManager(cfg.Cache.FilePath)
+	logger.Debug("Cache manager initialized with file: %s", cfg.Cache.FilePath)
+	
+	// Step 3: Fetch weather data (with caching)
 	logger.Info("Fetching weather data...")
 	forecastParams := api.ForecastParams{
 		Latitude:  cfg.Weather.Latitude,
@@ -361,48 +424,51 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 		Units:     cfg.Weather.Units,
 	}
 	
-	todayWeather, err := weatherClient.GetTodayWeatherWithFallback(ctx, forecastParams, cfg.Weather.Units)
+	// Use the new cache-aware method
+	todayWeather, forecast, err := weatherClient.GetTodayWeatherWithCache(ctx, forecastParams, cfg.Weather.Units, cacheManager)
 	if err != nil {
 		return fmt.Errorf("failed to fetch weather data: %w", err)
 	}
-	logger.Info("Weather data fetched successfully for location: %.4f, %.4f", 
+	logger.Debug("Weather data fetched successfully for location: %.4f, %.4f", 
 		cfg.Weather.Latitude, cfg.Weather.Longitude)
 	logger.Debug("Current conditions: %s, %.1f%s", 
 		todayWeather.CurrentConditions, todayWeather.CurrentTemp,
 		api.GetUnitSuffix("temperature", cfg.Weather.Units))
 
-	// Step 3: Generate weather report script using Claude
+	// Step 4: Generate weather report script using Claude
 	logger.Info("Generating weather report script...")
 	
-	// Create a basic forecast response structure for Claude (reusing the forecast structure)
-	forecast := &api.ForecastResponse{
-		List: []api.ForecastItem{
-			{
-				Dt: time.Now().Unix(),
-				Main: api.MainWeatherData{
-					Temp:     todayWeather.CurrentTemp,
-					FeelsLike: todayWeather.CurrentTemp, // Use current temp as fallback for feels like
-					TempMin:  todayWeather.TempLow,
-					TempMax:  todayWeather.TempHigh,
-					Pressure: 1013.25, // Default pressure if not available
-					Humidity: 50,      // Default humidity if not available
-				},
-				Weather: []api.WeatherCondition{
-					{
-						Main:        todayWeather.CurrentConditions,
-						Description: todayWeather.CurrentConditions,
+	// If we don't have a full forecast (used cache), create a minimal structure for Claude
+	if forecast == nil {
+		forecast = &api.ForecastResponse{
+			List: []api.ForecastItem{
+				{
+					Dt: time.Now().Unix(),
+					Main: api.MainWeatherData{
+						Temp:     todayWeather.CurrentTemp,
+						FeelsLike: todayWeather.CurrentTemp, // Use current temp as fallback for feels like
+						TempMin:  todayWeather.TempLow,
+						TempMax:  todayWeather.TempHigh,
+						Pressure: 1013.25, // Default pressure if not available
+						Humidity: 50,      // Default humidity if not available
 					},
+					Weather: []api.WeatherCondition{
+						{
+							Main:        todayWeather.CurrentConditions,
+							Description: todayWeather.CurrentConditions,
+						},
+					},
+					Wind: api.WindData{
+						Speed: 10.0, // Default wind speed if not available
+						Deg:   180,  // Default wind direction if not available
+					},
+					Pop: todayWeather.RainChance, // Already in 0-1 range
 				},
-				Wind: api.WindData{
-					Speed: 10.0, // Default wind speed if not available
-					Deg:   180,  // Default wind direction if not available
-				},
-				Pop: todayWeather.RainChance / 100.0, // Convert percentage to 0-1 range
 			},
-		},
-		City: api.CityInfo{
-			Name: fmt.Sprintf("%.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude),
-		},
+			City: api.CityInfo{
+				Name: todayWeather.Location,
+			},
+		}
 	}
 	
 	reportRequest := api.WeatherReportRequest{
@@ -417,9 +483,9 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to generate weather report script: %w", err)
 	}
-	logger.Info("Weather report script generated successfully (%d characters)", len(reportResponse.Script))
+	logger.Debug("Weather report script generated successfully (%d characters)", len(reportResponse.Script))
 
-	// Step 4: Convert script to speech using ElevenLabs
+	// Step 5: Convert script to speech using ElevenLabs
 	logger.Info("Converting script to speech...")
 	
 	// Ensure import directory exists
@@ -437,12 +503,12 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to convert script to speech: %w", err)
 	}
-	logger.Info("Speech generation completed successfully")
+	logger.Debug("Speech generation completed successfully")
 	logger.Debug("Audio file created: %s (%d ms)", speechResponse.AudioFilePath, speechResponse.DurationMs)
 
 	// File is already saved to final location
-	logger.Info("Weather report saved successfully: %s", speechResponse.AudioFilePath)
-	logger.Info("Ready for import into Myriad radio automation")
+	logger.Debug("Weather report saved successfully: %s", speechResponse.AudioFilePath)
+	logger.Debug("Ready for import into Myriad radio automation")
 	
 	return nil
 }

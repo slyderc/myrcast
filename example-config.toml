@@ -86,3 +86,9 @@ max_size_mb = 10
 
 # Also output to console
 console_output = true
+
+[cache]
+# Weather data caching configuration
+# Leave empty to use system temp directory (recommended)
+# Cache automatically expires at midnight local time
+file_path = ""

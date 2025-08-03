@@ -141,7 +141,7 @@ func NewEnhancedLogger(config Config) (*EnhancedLogger, error) {
 	logger.Logger = slog.New(handler)
 	
 	// Log initialization
-	logger.Info("Enhanced logger initialized",
+	logger.Debug("Enhanced logger initialized",
 		slog.String("log_file", logger.fileName),
 		slog.String("level", config.Level),
 		slog.Bool("console", config.ConsoleOutput))

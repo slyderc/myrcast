@@ -640,11 +640,95 @@
             "testStrategy": ""
           }
         ]
+      },
+      {
+        "id": 11,
+        "title": "Implement Daily Weather Data Caching System",
+        "description": "Create a caching system that stores daily forecast data in JSON format to reduce API calls while maintaining current conditions accuracy",
+        "details": "Implement a daily weather data caching system that stores forecast data (high/low temperatures, atmospheric conditions) in a JSON file upon first API call of the day. Subsequent runs throughout the same day will use cached forecast data and only fetch current conditions and alerts from the API. The cache automatically resets when the system detects a new day based on local time. This reduces API usage while ensuring current conditions remain accurate for radio broadcast quality.",
+        "testStrategy": "Test cache creation on first run, cache usage on subsequent runs same day, cache invalidation on new day. Test with corrupted cache files, missing cache directory, and various timezone scenarios. Verify API call reduction while maintaining data accuracy.",
+        "priority": "high",
+        "dependencies": [4],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design cache data structure and JSON schema",
+            "description": "Define the structure for cached weather data including forecast highs/lows, atmospheric data, and metadata",
+            "dependencies": [],
+            "details": "Design JSON schema for weather cache containing: daily forecast data (high/low temps, pressure, humidity, sunrise/sunset), location information, cache creation timestamp, expiration logic, and data validation. Structure should separate cacheable forecast data from live current conditions. Include versioning for future schema changes.",
+            "status": "pending",
+            "testStrategy": "Validate JSON schema with various weather data scenarios and ensure proper serialization/deserialization"
+          },
+          {
+            "id": 2,
+            "title": "Add cache configuration parameters",
+            "description": "Extend configuration system to support cache file path and caching preferences",
+            "dependencies": ["11.1"],
+            "details": "Add cache_file_path parameter to config.toml structure. Include optional cache_enabled boolean and cache_max_age_hours settings. Update configuration validation to ensure cache directory is writable. Provide sensible defaults and integrate with existing configuration system.",
+            "status": "pending",
+            "testStrategy": "Test configuration loading with new cache parameters, validate cache directory creation and permissions"
+          },
+          {
+            "id": 3,
+            "title": "Implement cache file I/O operations",
+            "description": "Create functions to read, write, and validate weather cache files",
+            "dependencies": ["11.2"],
+            "details": "Implement cache file operations: writeCache() to save weather data as JSON, readCache() to load and validate cached data, validateCache() to check data integrity and expiration. Include error handling for corrupted files, permission issues, and disk space problems. Use atomic writes to prevent corruption.",
+            "status": "pending",
+            "testStrategy": "Test file operations with various error scenarios, validate atomic writes, test cache corruption recovery"
+          },
+          {
+            "id": 4,
+            "title": "Add timezone-aware day change detection",
+            "description": "Implement local timezone detection and day boundary logic for cache invalidation",
+            "dependencies": ["11.3"],
+            "details": "Create day change detection using system local timezone rather than UTC. Implement logic to compare cache creation date with current local date to determine if cache is stale. Handle timezone changes and daylight saving time transitions properly. Cache should reset at local midnight.",
+            "status": "pending",
+            "testStrategy": "Test day rollover logic across timezone boundaries, daylight saving changes, and system timezone modifications"
+          },
+          {
+            "id": 5,
+            "title": "Modify weather client for hybrid data approach",
+            "description": "Update weather client to use cached forecast data while fetching live current conditions",
+            "dependencies": ["11.4"],
+            "details": "Modify GetTodayWeatherWithFallback() to check cache first, use cached forecast data if valid, fetch only current conditions from API. Implement logic to merge cached forecast data with live current conditions. Maintain backwards compatibility when cache is disabled or unavailable.",
+            "status": "pending",
+            "testStrategy": "Test hybrid data merging, validate cache hit/miss scenarios, ensure backwards compatibility without cache"
+          },
+          {
+            "id": 6,
+            "title": "Integrate caching into main application workflow",
+            "description": "Add cache system to main weather report generation workflow with proper error handling",
+            "dependencies": ["11.5"],
+            "details": "Integrate cache system into main.go runWeatherReportWorkflow(). Add cache initialization, error handling for cache failures, fallback to full API calls when cache is unavailable. Implement proper logging of cache hit/miss rates. Ensure graceful degradation when caching fails.",
+            "status": "pending",
+            "testStrategy": "Test full workflow with cache enabled/disabled, verify error handling and fallback behavior, validate logging output"
+          },
+          {
+            "id": 7,
+            "title": "Add comprehensive cache testing",
+            "description": "Create test suite covering all caching scenarios and edge cases",
+            "dependencies": ["11.6"],
+            "details": "Create comprehensive test suite for cache functionality: unit tests for cache I/O operations, integration tests for weather client caching, timezone and day boundary tests, error scenario testing (corrupted cache, permission issues). Include performance benchmarks for cache vs full API calls.",
+            "status": "pending",
+            "testStrategy": "Run full test suite covering normal operation, error conditions, performance benchmarks, and edge cases"
+          },
+          {
+            "id": 8,
+            "title": "Update documentation and configuration examples",
+            "description": "Document the caching feature and update configuration examples",
+            "dependencies": ["11.7"],
+            "details": "Update README.md with caching feature description, add cache_file_path to example-config.toml, document API call reduction benefits, add troubleshooting section for cache-related issues. Include performance recommendations and cache file maintenance guidance.",
+            "status": "pending",
+            "testStrategy": "Review documentation accuracy, validate configuration examples work correctly"
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-07-25T23:05:31.403Z",
-      "updated": "2025-07-27T22:54:34.762Z",
+      "updated": "2025-08-01T12:30:00.000Z",
       "description": "Tasks for master context"
     }
   }

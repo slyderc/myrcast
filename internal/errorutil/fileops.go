@@ -196,7 +196,7 @@ func EnsureDirectoryWithLogging(logger *slog.Logger, path string, perm os.FileMo
 
 	// Log successful directory creation
 	if logger != nil {
-		logger.Info("Directory ensured",
+		logger.Debug("Directory ensured",
 			slog.String("directory_path", path),
 			slog.String("permissions", perm.String()))
 	}
@@ -235,7 +235,7 @@ func SafeFileWrite(logger *slog.Logger, path string, data []byte, perm os.FileMo
 
 	// Log successful write
 	if logger != nil {
-		logger.Info("File written successfully",
+		logger.Debug("File written successfully",
 			slog.String("file_path", path),
 			slog.Int("bytes_written", len(data)),
 			slog.String("permissions", perm.String()))
@@ -284,7 +284,7 @@ func CleanupTempFiles(logger *slog.Logger, dir, pattern string) error {
 			anyAttrs[i] = attr
 		}
 
-		logger.Info("Temporary file cleanup completed", anyAttrs...)
+		logger.Debug("Temporary file cleanup completed", anyAttrs...)
 	}
 
 	return lastErr

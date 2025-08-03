@@ -73,6 +73,11 @@ type Logging struct {
 	ConsoleOutput   bool   `toml:"console_output"`   // Also output to console
 }
 
+// Cache contains weather data caching configuration
+type Cache struct {
+	FilePath string `toml:"file_path"` // Path to weather cache file (JSON format)
+}
+
 // Config represents the complete application configuration
 type Config struct {
 	APIs       APIs       `toml:"apis"`
@@ -82,6 +87,7 @@ type Config struct {
 	Claude     Claude     `toml:"claude"`
 	ElevenLabs ElevenLabs `toml:"elevenlabs"`
 	Logging    Logging    `toml:"logging"`
+	Cache      Cache      `toml:"cache"`
 }
 
 // LoadConfig reads and parses a TOML configuration file
@@ -214,6 +220,12 @@ func (c *Config) ApplyDefaults() {
 		c.Logging.MaxSizeMB = 10 // 10MB default rotation size
 	}
 	// ConsoleOutput defaults to false for production, can be enabled in config
+
+	// Default cache settings
+	if strings.TrimSpace(c.Cache.FilePath) == "" {
+		// Use system temp directory for cross-platform compatibility
+		c.Cache.FilePath = filepath.Join(os.TempDir(), "myrcast-weather-cache.toml")
+	}
 }
 
 // ConfigNotFoundError represents a missing configuration file
@@ -272,6 +284,11 @@ func (c *Config) Validate() error {
 
 	// Validate logging settings
 	if err := c.validateLogging(); err != nil {
+		errors = append(errors, err...)
+	}
+
+	// Validate cache settings
+	if err := c.validateCache(); err != nil {
 		errors = append(errors, err...)
 	}
 
@@ -617,6 +634,45 @@ func (c *Config) validateLogging() []ValidationError {
 	return errors
 }
 
+// validateCache checks cache configuration
+func (c *Config) validateCache() []ValidationError {
+	var errors []ValidationError
+
+	// Validate cache file path
+	if strings.TrimSpace(c.Cache.FilePath) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "cache.file_path",
+			Message: "cache file path is required",
+		})
+	} else {
+		// Ensure the parent directory exists and is writable
+		cacheDir := filepath.Dir(c.Cache.FilePath)
+		if cacheDir != "." && cacheDir != "" {
+			// Only create parent directory if it's not the current directory
+			if err := os.MkdirAll(cacheDir, 0755); err != nil {
+				errors = append(errors, ValidationError{
+					Field:   "cache.file_path",
+					Message: fmt.Sprintf("cannot create cache directory: %v", err),
+				})
+			}
+		}
+		
+		// Test if we can write to the cache file location
+		testFile := c.Cache.FilePath + ".test"
+		if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+			errors = append(errors, ValidationError{
+				Field:   "cache.file_path",
+				Message: fmt.Sprintf("cache file location is not writable: %v", err),
+			})
+		} else {
+			// Clean up test file
+			os.Remove(testFile)
+		}
+	}
+
+	return errors
+}
+
 // GenerateSampleConfig creates a sample configuration file at the specified path
 func GenerateSampleConfig(configPath string) error {
 	sampleConfig := `# Myrcast Configuration File
@@ -712,6 +768,16 @@ level = "info"                             # Log level: debug, info, warn, error
 max_files = 7                              # Keep 7 days of logs (0 = unlimited)
 max_size_mb = 10                           # Rotate when file exceeds 10MB (0 = unlimited)  
 console_output = true                      # Also output to console (helpful for debugging)
+
+[cache]
+# Weather data caching configuration
+# Reduces API calls by caching daily forecast data
+# Cache automatically expires at midnight local time
+# Current conditions are always fetched fresh from the API
+file_path = ""                             # Path to weather cache file (leave empty for default)
+                                           # Default: system temp directory
+                                           # Windows: %TEMP%\myrcast-weather-cache.toml
+                                           # macOS/Linux: /tmp/myrcast-weather-cache.toml
 `
 
 	// Create directory if it doesn't exist
