@@ -393,8 +393,8 @@ func TestRateLimiter(t *testing.T) {
 	}
 }
 
-// Integration test - requires valid API key
-func TestGetForecastIntegration(t *testing.T) {
+// Integration test for One Call API - requires valid API key
+func TestGetOneCallWeatherIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -405,45 +405,50 @@ func TestGetForecastIntegration(t *testing.T) {
 		Latitude:  testLatitude,
 		Longitude: testLongitude,
 		Units:     "metric",
-		Count:     5,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	forecast, err := client.GetForecast(ctx, params)
+	oneCall, err := client.GetOneCallWeather(ctx, params)
 	if err != nil {
-		t.Fatalf("GetForecast failed: %v", err)
+		t.Fatalf("GetOneCallWeather failed: %v", err)
 	}
 
-	if forecast == nil {
-		t.Fatal("Expected non-nil forecast")
+	if oneCall == nil {
+		t.Fatal("Expected non-nil one call response")
 	}
 
-	if len(forecast.List) == 0 {
-		t.Fatal("Expected forecast entries")
+	if len(oneCall.Daily) == 0 {
+		t.Fatal("Expected daily forecast entries")
 	}
 
-	if forecast.City.Name == "" {
-		t.Error("Expected city name in forecast")
+	if oneCall.Timezone == "" {
+		t.Error("Expected timezone in response")
 	}
 
-	// Validate first forecast entry
-	entry := forecast.List[0]
-	if entry.Main.Temp == 0 {
-		t.Error("Expected non-zero temperature")
+	// Validate current weather data
+	if oneCall.Current.Temp == 0 {
+		t.Error("Expected non-zero current temperature")
 	}
 
-	if len(entry.Weather) == 0 {
-		t.Error("Expected weather conditions")
+	if len(oneCall.Current.Weather) == 0 {
+		t.Error("Expected current weather conditions")
 	}
 
-	t.Logf("Successfully retrieved forecast for %s, %s", forecast.City.Name, forecast.City.Country)
-	t.Logf("First entry: %.1f°C, %s", entry.Main.Temp, entry.Weather[0].Description)
+	// Validate daily forecast data
+	dailyEntry := oneCall.Daily[0]
+	if dailyEntry.Temp.Max == 0 && dailyEntry.Temp.Min == 0 {
+		t.Error("Expected non-zero daily temperature values")
+	}
+
+	t.Logf("Successfully retrieved One Call weather for %s", oneCall.Timezone)
+	t.Logf("Current: %.1f°C, %s", oneCall.Current.Temp, oneCall.Current.Weather[0].Description)
+	t.Logf("Today: High=%.1f°C, Low=%.1f°C", dailyEntry.Temp.Max, dailyEntry.Temp.Min)
 }
 
-// Integration test for today's weather extraction
-func TestExtractTodayWeatherIntegration(t *testing.T) {
+// Integration test for today's weather extraction using One Call API
+func TestExtractTodayWeatherFromOneCallIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -459,14 +464,14 @@ func TestExtractTodayWeatherIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	forecast, err := client.GetForecast(ctx, params)
+	oneCall, err := client.GetOneCallWeather(ctx, params)
 	if err != nil {
-		t.Fatalf("GetForecast failed: %v", err)
+		t.Fatalf("GetOneCallWeather failed: %v", err)
 	}
 
-	todayData, err := client.ExtractTodayWeather(forecast)
+	todayData, err := client.ExtractTodayWeatherFromOneCall(oneCall)
 	if err != nil {
-		t.Fatalf("ExtractTodayWeather failed: %v", err)
+		t.Fatalf("ExtractTodayWeatherFromOneCall failed: %v", err)
 	}
 
 	if todayData == nil {
@@ -492,7 +497,7 @@ func TestExtractTodayWeatherIntegration(t *testing.T) {
 	t.Logf("Today's weather for %s:", todayData.Location)
 	t.Logf("  Temperature: %.1f°C (high) / %.1f°C (low)", todayData.TempHigh, todayData.TempLow)
 	t.Logf("  Current: %.1f°C, %s", todayData.CurrentTemp, todayData.CurrentConditions)
-	t.Logf("  Rain chance: %.0f%%", todayData.RainChance)
+	t.Logf("  Rain chance: %.0f%%", todayData.RainChance*100) // Convert to percentage
 	t.Logf("  Wind: %s", todayData.WindConditions)
 	if len(todayData.WeatherAlerts) > 0 {
 		t.Logf("  Alerts: %v", todayData.WeatherAlerts)
@@ -516,9 +521,9 @@ func TestWeatherClientWithRateLimitIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	todayData, err := client.GetTodayWeatherWithFallback(ctx, params, "metric")
+	todayData, err := client.GetTodayWeatherWithOneCall(ctx, params, "metric")
 	if err != nil {
-		t.Fatalf("GetTodayWeatherWithFallback failed: %v", err)
+		t.Fatalf("GetTodayWeatherWithOneCall failed: %v", err)
 	}
 
 	if todayData == nil {
@@ -576,36 +581,59 @@ func TestConvertWeatherData(t *testing.T) {
 	}
 }
 
-// Benchmark test for API performance
-func BenchmarkExtractTodayWeather(b *testing.B) {
-	// Create mock forecast data
-	mockForecast := &ForecastResponse{
-		List: make([]ForecastItem, 40),
-		City: CityInfo{Name: "Test City", Country: "US"},
-	}
-
-	now := time.Now()
-	for i := range mockForecast.List {
-		mockForecast.List[i] = ForecastItem{
-			Dt: now.Add(time.Duration(i) * 3 * time.Hour).Unix(),
-			Main: MainWeatherData{
-				Temp:    20 + float64(i%10),
-				TempMin: 15 + float64(i%8),
-				TempMax: 25 + float64(i%12),
+// Benchmark test for One Call API performance
+func BenchmarkExtractTodayWeatherFromOneCall(b *testing.B) {
+	// Create mock One Call API data
+	mockOneCall := &OneCallResponse{
+		Lat:            37.7749,
+		Lon:            -122.4194,
+		Timezone:       "America/Los_Angeles",
+		TimezoneOffset: -28800,
+		Current: CurrentData{
+			Dt:        time.Now().Unix(),
+			Temp:      22.5,
+			Humidity:  65,
+			Pressure:  1013,
+			WindSpeed: 3.5,
+			WindDeg:   180,
+			Weather: []WeatherCondition{{
+				Main:        "Clear",
+				Description: "clear sky",
+			}},
+		},
+		Daily: []DailyData{
+			{
+				Dt:      time.Now().Unix(),
+				Sunrise: time.Now().Add(-6 * time.Hour).Unix(),
+				Sunset:  time.Now().Add(6 * time.Hour).Unix(),
+				Temp: DailyTemperature{
+					Day:   25.0,
+					Min:   18.0,
+					Max:   28.0,
+					Night: 20.0,
+					Eve:   24.0,
+					Morn:  19.0,
+				},
+				Humidity:  60,
+				Pressure:  1013,
+				WindSpeed: 4.0,
+				WindDeg:   190,
+				Weather: []WeatherCondition{{
+					Main:        "Clear",
+					Description: "clear sky",
+				}},
+				Pop: 0.1,
 			},
-			Weather: []WeatherCondition{{Description: "Clear"}},
-			Wind:    WindData{Speed: 5, Deg: 180},
-			Pop:     0.1,
-		}
+		},
 	}
 
 	client := NewWeatherClient("test-key")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.ExtractTodayWeather(mockForecast)
+		_, err := client.ExtractTodayWeatherFromOneCall(mockOneCall)
 		if err != nil {
-			b.Fatalf("ExtractTodayWeather failed: %v", err)
+			b.Fatalf("ExtractTodayWeatherFromOneCall failed: %v", err)
 		}
 	}
 }

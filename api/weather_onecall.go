@@ -190,6 +190,11 @@ func (w *WeatherClient) GetOneCallWeather(ctx context.Context, params ForecastPa
 
 // ExtractTodayWeatherFromOneCall processes One Call API data to extract today's weather
 func (w *WeatherClient) ExtractTodayWeatherFromOneCall(oneCall *OneCallResponse) (*TodayWeatherData, error) {
+	return w.ExtractTodayWeatherFromOneCallWithContext(context.Background(), oneCall)
+}
+
+// ExtractTodayWeatherFromOneCallWithContext processes One Call API data to extract today's weather with context
+func (w *WeatherClient) ExtractTodayWeatherFromOneCallWithContext(ctx context.Context, oneCall *OneCallResponse) (*TodayWeatherData, error) {
 	if oneCall == nil || len(oneCall.Daily) == 0 {
 		return nil, fmt.Errorf("empty One Call data")
 	}
@@ -226,6 +231,14 @@ func (w *WeatherClient) ExtractTodayWeatherFromOneCall(oneCall *OneCallResponse)
 	// Determine unit system from configuration (already specified in request)
 	units := "metric" // Default, but should match params.Units
 
+	// Try to get the actual location details via reverse geocoding
+	locationInfo := w.GetLocationInfo(ctx, oneCall.Lat, oneCall.Lon)
+	locationName := locationInfo.Display
+	if locationName == "" {
+		// Fallback to timezone if geocoding fails
+		locationName = oneCall.Timezone
+	}
+
 	result := &TodayWeatherData{
 		TempHigh:          todayDaily.Temp.Max,  // Proper daily maximum
 		TempLow:           todayDaily.Temp.Min,  // Proper daily minimum
@@ -236,7 +249,8 @@ func (w *WeatherClient) ExtractTodayWeatherFromOneCall(oneCall *OneCallResponse)
 		WeatherAlerts:     weatherAlerts,
 		LastUpdated:       time.Now(),
 		Units:             units,
-		Location:          oneCall.Timezone, // Will be updated with geocoding if needed
+		Location:          locationName,
+		Country:           locationInfo.Country,
 	}
 
 	complete(nil)

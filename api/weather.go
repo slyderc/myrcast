@@ -16,8 +16,10 @@ import (
 const (
 	// OpenWeather API base URL and endpoints
 	openWeatherBaseURL = "https://api.openweathermap.org/data/2.5"
+	geocodingBaseURL   = "https://api.openweathermap.org/geo/1.0"
 	forecastEndpoint   = "/forecast"
 	weatherEndpoint    = "/weather"
+	reverseGeoEndpoint = "/reverse"
 
 	// Default timeout for API requests
 	defaultTimeout = 10 * time.Second
@@ -87,54 +89,6 @@ type ForecastParams struct {
 	Longitude float64 // Longitude coordinate
 	Units     string  // Units: metric, imperial, or kelvin
 	Count     int     // Number of forecast entries (optional, max 40)
-}
-
-// GetForecast fetches 5-day weather forecast data from OpenWeather API
-func (w *WeatherClient) GetForecast(ctx context.Context, params ForecastParams) (*ForecastResponse, error) {
-	// AIDEV-NOTE: Context allows for request cancellation and timeout handling
-	complete := logger.LogOperationStart("weather_api_request", map[string]any{
-		"endpoint":  "forecast",
-		"latitude":  params.Latitude,
-		"longitude": params.Longitude,
-		"units":     params.Units,
-	})
-
-	// Build query parameters for the API request
-	queryParams := map[string]interface{}{
-		"lat":   params.Latitude,
-		"lon":   params.Longitude,
-		"appid": w.apiKey,
-		"units": params.Units,
-	}
-
-	// Add optional count parameter if specified (max 40 for free tier)
-	if params.Count > 0 && params.Count <= 40 {
-		queryParams["cnt"] = params.Count
-	}
-
-	var forecastResp ForecastResponse
-
-	// Execute the HTTP request with context for cancellation
-	resp, err := w.client.R().
-		SetContext(ctx).
-		SetQueryParams(convertToStringMap(queryParams)).
-		SetResult(&forecastResp).
-		Get(forecastEndpoint)
-
-	if err != nil {
-		complete(fmt.Errorf("HTTP request failed: %w", err))
-		return nil, fmt.Errorf("failed to fetch weather forecast: %w", err)
-	}
-
-	// Check for HTTP error status codes
-	if !resp.IsSuccess() {
-		apiErr := parseOpenWeatherError(resp)
-		complete(apiErr)
-		return nil, apiErr
-	}
-
-	complete(nil)
-	return &forecastResp, nil
 }
 
 // CurrentWeatherResponse represents the OpenWeather current weather API response
@@ -369,150 +323,7 @@ type TodayWeatherData struct {
 	LastUpdated       time.Time `json:"last_updated"`       // When data was processed
 	Units             string    `json:"units"`              // Unit system used
 	Location          string    `json:"location"`           // Location name
-}
-
-// ExtractTodayWeather processes forecast data and extracts today's weather information
-func (w *WeatherClient) ExtractTodayWeather(forecast *ForecastResponse) (*TodayWeatherData, error) {
-	if forecast == nil || len(forecast.List) == 0 {
-		return nil, fmt.Errorf("empty forecast data")
-	}
-
-	complete := logger.LogOperationStart("weather_data_extraction", map[string]any{
-		"forecast_entries": len(forecast.List),
-		"city":             forecast.City.Name,
-	})
-
-	// Get today's date in UTC (OpenWeather uses UTC timestamps)
-	now := time.Now().UTC()
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	todayEnd := todayStart.Add(24 * time.Hour)
-
-	var todayEntries []ForecastItem
-	var currentEntry *ForecastItem
-	var closestToNow int64 = 999999999999 // Large number for comparison
-
-	// Filter forecast entries for today only
-	for _, entry := range forecast.List {
-		entryTime := time.Unix(entry.Dt, 0).UTC()
-
-		// Check if this entry is for today
-		if entryTime.After(todayStart) && entryTime.Before(todayEnd) {
-			todayEntries = append(todayEntries, entry)
-
-			// Find entry closest to current time for "current" conditions
-			timeDiff := abs(entry.Dt - now.Unix())
-			if timeDiff < closestToNow {
-				closestToNow = timeDiff
-				currentEntry = &entry
-			}
-		}
-	}
-
-	// AIDEV-NOTE: If no today data exists (late evening), use next available forecast data
-	if len(todayEntries) == 0 {
-		logger.LogWithFields(logger.WarnLevel, "No forecast data for today, using next available data", map[string]any{
-			"current_time": now.Format("15:04:05 UTC"),
-			"today_range":  fmt.Sprintf("%s to %s", todayStart.Format("15:04"), todayEnd.Format("15:04")),
-			"entries":      len(forecast.List),
-		})
-
-		// Use first available forecast entry as fallback
-		if len(forecast.List) > 0 {
-			todayEntries = []ForecastItem{forecast.List[0]}
-			currentEntry = &forecast.List[0]
-		} else {
-			complete(fmt.Errorf("no forecast data available at all"))
-			return nil, fmt.Errorf("no forecast data available")
-		}
-	}
-
-	// Calculate temperature highs and lows for today
-	tempHigh := todayEntries[0].Main.TempMax
-	tempLow := todayEntries[0].Main.TempMin
-	maxRainChance := todayEntries[0].Pop
-
-	var weatherAlerts []string
-	alertSet := make(map[string]bool) // To avoid duplicate alerts
-
-	for _, entry := range todayEntries {
-		// Track temperature extremes
-		if entry.Main.TempMax > tempHigh {
-			tempHigh = entry.Main.TempMax
-		}
-		if entry.Main.TempMin < tempLow {
-			tempLow = entry.Main.TempMin
-		}
-
-		// Track maximum precipitation probability
-		if entry.Pop > maxRainChance {
-			maxRainChance = entry.Pop
-		}
-
-		// Collect weather alerts for notable conditions
-		for _, condition := range entry.Weather {
-			if isNotableWeatherCondition(condition.Main) && !alertSet[condition.Description] {
-				weatherAlerts = append(weatherAlerts, condition.Description)
-				alertSet[condition.Description] = true
-			}
-		}
-	}
-
-	// Get current conditions
-	currentConditions := "Clear"
-	currentTemp := tempHigh // Fallback to high temp
-	if currentEntry != nil {
-		currentTemp = currentEntry.Main.Temp
-		if len(currentEntry.Weather) > 0 {
-			currentConditions = currentEntry.Weather[0].Description
-		}
-	}
-
-	// Format wind conditions from current entry
-	windConditions := "Calm"
-	if currentEntry != nil {
-		windConditions = formatWindConditions(currentEntry.Wind)
-	}
-
-	// Determine unit system from temperature values (rough heuristic)
-	units := "metric"  // Default
-	if tempHigh > 50 { // Likely Fahrenheit if over 50
-		units = "imperial"
-	} else if tempHigh > 300 { // Likely Kelvin if over 300
-		units = "kelvin"
-	}
-
-	result := &TodayWeatherData{
-		TempHigh:          tempHigh,
-		TempLow:           tempLow,
-		CurrentTemp:       currentTemp,
-		CurrentConditions: currentConditions,
-		RainChance:        maxRainChance, // Keep as decimal (0-1)
-		WindConditions:    windConditions,
-		WeatherAlerts:     weatherAlerts,
-		LastUpdated:       time.Now(),
-		Units:             units,
-		Location:          fmt.Sprintf("%s, %s", forecast.City.Name, forecast.City.Country),
-	}
-
-	complete(nil)
-	logger.LogWithFields(logger.InfoLevel, "Weather data extracted successfully", map[string]any{
-		"location":     result.Location,
-		"temp_high":    result.TempHigh,
-		"temp_low":     result.TempLow,
-		"current_temp": result.CurrentTemp,
-		"rain_chance":  result.RainChance,
-		"alerts_count": len(result.WeatherAlerts),
-	})
-
-	return result, nil
-}
-
-// abs returns the absolute value of an int64
-func abs(x int64) int64 {
-	if x < 0 {
-		return -x
-	}
-	return x
+	Country           string    `json:"country"`            // Country code
 }
 
 // isNotableWeatherCondition determines if a weather condition should be included in alerts
@@ -848,61 +659,6 @@ func NewWeatherClientWithRateLimit(apiKey string) *WeatherClientWithRateLimit {
 	}
 }
 
-// GetForecastWithRateLimit fetches forecast data with rate limiting and enhanced error handling
-func (w *WeatherClientWithRateLimit) GetForecastWithRateLimit(ctx context.Context, params ForecastParams) (*ForecastResponse, error) {
-	// Apply rate limiting
-	if err := w.rateLimiter.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("rate limiter cancelled: %w", err)
-	}
-
-	// Validate input parameters before making request
-	if err := validateForecastParams(params); err != nil {
-		return nil, fmt.Errorf("invalid parameters: %w", err)
-	}
-
-	// Use exponential backoff for retries
-	const maxRetries = 3
-	var lastErr error
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			// Exponential backoff: 1s, 2s, 4s
-			backoffTime := time.Duration(1<<uint(attempt-1)) * time.Second
-			logger.Debug("Retrying API request after %.1f seconds (attempt %d/%d)", backoffTime.Seconds(), attempt+1, maxRetries)
-
-			select {
-			case <-time.After(backoffTime):
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}
-
-		forecast, err := w.WeatherClient.GetForecast(ctx, params)
-		if err != nil {
-			lastErr = err
-
-			// Check if this is a retryable error
-			if !isRetryableError(err) {
-				logger.Error("Non-retryable error, not attempting retry: %v", err)
-				return nil, err
-			}
-
-			logger.Warn("Retryable error on attempt %d: %v", attempt+1, err)
-			continue
-		}
-
-		// Success
-		if attempt > 0 {
-			logger.Debug("API request succeeded after %d retries", attempt)
-		}
-		return forecast, nil
-	}
-
-	// All retries exhausted
-	logger.Error("API request failed after %d attempts, last error: %v", maxRetries, lastErr)
-	return nil, fmt.Errorf("API request failed after %d retries: %w", maxRetries, lastErr)
-}
-
 // validateForecastParams validates input parameters for API requests
 func validateForecastParams(params ForecastParams) error {
 	var errors []string
@@ -981,38 +737,6 @@ func isRetryableError(err error) bool {
 	return false
 }
 
-// GetTodayWeatherWithFallback fetches and processes today's weather with comprehensive error handling
-func (w *WeatherClientWithRateLimit) GetTodayWeatherWithFallback(ctx context.Context, params ForecastParams, targetUnits string) (*TodayWeatherData, error) {
-	complete := logger.LogOperationStart("get_today_weather_with_fallback", map[string]any{
-		"latitude":     params.Latitude,
-		"longitude":    params.Longitude,
-		"units":        params.Units,
-		"target_units": targetUnits,
-	})
-
-	// Get forecast data with rate limiting and retries
-	forecast, err := w.GetForecastWithRateLimit(ctx, params)
-	if err != nil {
-		complete(fmt.Errorf("failed to fetch forecast: %w", err))
-		return nil, fmt.Errorf("unable to fetch weather forecast: %w", err)
-	}
-
-	// Extract today's weather data
-	todayData, err := w.ExtractTodayWeather(forecast)
-	if err != nil {
-		complete(fmt.Errorf("failed to extract today's data: %w", err))
-		return nil, fmt.Errorf("unable to process weather data: %w", err)
-	}
-
-	// Convert units if needed
-	if targetUnits != "" && targetUnits != todayData.Units {
-		todayData = w.ConvertWeatherData(todayData, targetUnits)
-	}
-
-	complete(nil)
-	return todayData, nil
-}
-
 // GetCurrentWeatherWithRateLimit fetches current weather data with rate limiting
 func (w *WeatherClientWithRateLimit) GetCurrentWeatherWithRateLimit(ctx context.Context, params ForecastParams) (*CurrentWeatherResponse, error) {
 	// Apply rate limiting
@@ -1026,119 +750,6 @@ func (w *WeatherClientWithRateLimit) GetCurrentWeatherWithRateLimit(ctx context.
 	}
 
 	return w.WeatherClient.GetCurrentWeather(ctx, params)
-}
-
-// GetTodayWeatherWithCache fetches weather using cache for forecast data and live API for current conditions
-func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Context, params ForecastParams, targetUnits string, cacheManager *CacheManager) (*TodayWeatherData, *ForecastResponse, error) {
-	complete := logger.LogOperationStart("get_today_weather_with_cache", map[string]any{
-		"latitude":      params.Latitude,
-		"longitude":     params.Longitude,
-		"units":         params.Units,
-		"target_units":  targetUnits,
-		"cache_enabled": cacheManager != nil,
-	})
-
-	// Check if cache is valid for today
-	if cacheManager != nil && cacheManager.IsValidForToday() {
-		logger.Debug("Using cached weather data for forecast values")
-
-		// Try to read cache
-		cache, err := cacheManager.Read()
-		if err == nil {
-			// Verify cache is for the same location
-			if cache.Latitude == params.Latitude && cache.Longitude == params.Longitude && cache.Units == params.Units {
-				// Fetch only current conditions from API (reduced API call)
-				currentWeather, err := w.GetCurrentWeatherWithRateLimit(ctx, params)
-				if err != nil {
-					logger.Warn("Failed to fetch current conditions, falling back to full API call: %v", err)
-				} else {
-					// Extract current conditions and merge with cached forecast data
-					currentConditions := "Clear"
-					if len(currentWeather.Weather) > 0 {
-						currentConditions = currentWeather.Weather[0].Description
-					}
-
-					// Calculate rain chance from current data
-					rainChance := 0.0
-					if currentWeather.Rain != nil && currentWeather.Rain.OneHour > 0 {
-						rainChance = 1.0 // Currently raining
-					} else if currentWeather.Snow != nil && currentWeather.Snow.OneHour > 0 {
-						rainChance = 1.0 // Currently snowing
-					} else if currentWeather.Clouds.All > 80 {
-						rainChance = float64(currentWeather.Clouds.All) / 100.0
-					}
-
-					// Check for weather alerts
-					var weatherAlerts []string
-					for _, condition := range currentWeather.Weather {
-						if isNotableWeatherCondition(condition.Main) {
-							weatherAlerts = append(weatherAlerts, condition.Description)
-						}
-					}
-
-					// Merge cached forecast data with live current conditions
-					todayData := &TodayWeatherData{
-						TempHigh:          cache.DailyForecast.TempHigh,
-						TempLow:           cache.DailyForecast.TempLow,
-						CurrentTemp:       currentWeather.Main.Temp,
-						CurrentConditions: currentConditions,
-						RainChance:        rainChance,
-						WindConditions:    formatWindConditions(currentWeather.Wind),
-						WeatherAlerts:     weatherAlerts,
-						LastUpdated:       time.Now(),
-						Units:             cache.Units,
-						Location:          cache.Location,
-					}
-
-					// Convert units if needed
-					if targetUnits != "" && targetUnits != todayData.Units {
-						todayData = w.ConvertWeatherData(todayData, targetUnits)
-					}
-
-					complete(nil)
-					logger.Debug("Weather data retrieved using cache + current conditions")
-					return todayData, nil, nil
-				}
-			} else {
-				logger.Debug("Cache location mismatch, fetching fresh data")
-			}
-		} else {
-			logger.Warn("Failed to read cache: %v", err)
-		}
-	}
-
-	// Fall back to full API call (either no cache, invalid cache, or error)
-	logger.Debug("Fetching full weather forecast from API")
-
-	// Get forecast data with rate limiting and retries
-	forecast, err := w.GetForecastWithRateLimit(ctx, params)
-	if err != nil {
-		complete(fmt.Errorf("failed to fetch forecast: %w", err))
-		return nil, nil, fmt.Errorf("unable to fetch weather forecast: %w", err)
-	}
-
-	// Extract today's weather data
-	todayData, err := w.ExtractTodayWeather(forecast)
-	if err != nil {
-		complete(fmt.Errorf("failed to extract today's data: %w", err))
-		return nil, nil, fmt.Errorf("unable to process weather data: %w", err)
-	}
-
-	// Convert units if needed
-	if targetUnits != "" && targetUnits != todayData.Units {
-		todayData = w.ConvertWeatherData(todayData, targetUnits)
-	}
-
-	// Write to cache for future use
-	if cacheManager != nil {
-		if err := cacheManager.Write(forecast, todayData); err != nil {
-			logger.Warn("Failed to write weather cache: %v", err)
-			// Continue - cache write failure is not critical
-		}
-	}
-
-	complete(nil)
-	return todayData, forecast, nil
 }
 
 // GetOneCallWeatherWithRateLimit fetches One Call API data with rate limiting
@@ -1173,7 +784,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCall(ctx context.Cont
 	}
 
 	// Extract today's weather data
-	todayData, err := w.ExtractTodayWeatherFromOneCall(oneCall)
+	todayData, err := w.ExtractTodayWeatherFromOneCallWithContext(ctx, oneCall)
 	if err != nil {
 		complete(fmt.Errorf("failed to extract today's data: %w", err))
 		return nil, fmt.Errorf("unable to process weather data: %w", err)
@@ -1230,6 +841,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCallCache(ctx context
 						LastUpdated:       time.Now(),
 						Units:             params.Units,
 						Location:          cache.Location,
+						Country:           cache.DailyForecast.Country, // Cached country
 					}
 
 					// Extract fresh current conditions
@@ -1261,7 +873,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCallCache(ctx context
 						todayData = w.ConvertWeatherData(todayData, targetUnits)
 					}
 
-					logger.Info("Successfully used cached daily values with fresh current conditions")
+					logger.Debug("Successfully used cached daily values with fresh current conditions")
 					complete(nil)
 					return todayData, oneCall, nil
 				}
@@ -1282,7 +894,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCallCache(ctx context
 	}
 
 	// Extract today's weather data
-	todayData, err = w.ExtractTodayWeatherFromOneCall(oneCall)
+	todayData, err = w.ExtractTodayWeatherFromOneCallWithContext(ctx, oneCall)
 	if err != nil {
 		complete(fmt.Errorf("failed to extract today's data: %w", err))
 		return nil, nil, fmt.Errorf("unable to process weather data: %w", err)
@@ -1307,4 +919,86 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCallCache(ctx context
 
 	complete(nil)
 	return todayData, oneCall, nil
+}
+
+// GeocodingResponse represents the OpenWeather Geocoding API response
+type GeocodingResponse struct {
+	Name       string            `json:"name"`
+	LocalNames map[string]string `json:"local_names,omitempty"`
+	Country    string            `json:"country"`
+	State      string            `json:"state,omitempty"`
+}
+
+// LocationInfo holds geocoded location details
+type LocationInfo struct {
+	City    string
+	State   string
+	Country string
+	Display string // Formatted display name
+}
+
+// GetLocationName performs reverse geocoding to get city name from coordinates
+func (w *WeatherClient) GetLocationName(ctx context.Context, lat, lon float64) string {
+	info := w.GetLocationInfo(ctx, lat, lon)
+	return info.Display
+}
+
+// GetLocationInfo performs reverse geocoding to get full location details from coordinates
+func (w *WeatherClient) GetLocationInfo(ctx context.Context, lat, lon float64) LocationInfo {
+	// Build query parameters for reverse geocoding
+	queryParams := map[string]string{
+		"lat":   fmt.Sprintf("%f", lat),
+		"lon":   fmt.Sprintf("%f", lon),
+		"limit": "1",
+		"appid": w.apiKey,
+	}
+
+	// Create request
+	req := w.client.R().
+		SetContext(ctx).
+		SetQueryParams(queryParams).
+		SetHeader("User-Agent", userAgent)
+
+	// Make the API call
+	resp, err := req.Get(geocodingBaseURL + reverseGeoEndpoint)
+	if err != nil {
+		logger.Debug("Reverse geocoding failed: %v", err)
+		return LocationInfo{}
+	}
+
+	if resp.StatusCode() != 200 {
+		logger.Debug("Reverse geocoding returned status %d", resp.StatusCode())
+		return LocationInfo{}
+	}
+
+	// Parse response
+	var geoData []GeocodingResponse
+	if err := json.Unmarshal(resp.Body(), &geoData); err != nil {
+		logger.Debug("Failed to parse geocoding response: %v", err)
+		return LocationInfo{}
+	}
+
+	if len(geoData) == 0 {
+		logger.Debug("No geocoding results found")
+		return LocationInfo{}
+	}
+
+	// Build location info
+	info := LocationInfo{
+		City:    geoData[0].Name,
+		State:   geoData[0].State,
+		Country: geoData[0].Country,
+	}
+
+	// Format display name
+	if info.State != "" {
+		info.Display = fmt.Sprintf("%s, %s", info.City, info.State)
+	} else if info.Country != "" {
+		info.Display = fmt.Sprintf("%s, %s", info.City, info.Country)
+	} else {
+		info.Display = info.City
+	}
+
+	logger.Debug("Reverse geocoding successful: %s (Country: %s)", info.Display, info.Country)
+	return info
 }

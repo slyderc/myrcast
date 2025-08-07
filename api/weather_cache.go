@@ -122,63 +122,6 @@ func (cm *CacheManager) Read() (*WeatherCache, error) {
 	return &cache, nil
 }
 
-// Write saves weather data to the cache file
-func (cm *CacheManager) Write(forecast *ForecastResponse, todayData *TodayWeatherData) error {
-	complete := logger.LogOperationStart("cache_write", map[string]any{
-		"file_path": cm.filePath,
-		"location":  todayData.Location,
-	})
-
-	// Create cache structure
-	now := time.Now()
-	cache := WeatherCache{
-		CreatedOn:     now.Format("2006-01-02"), // Local date
-		CreatedAt:     now.Unix(),
-		Location:      todayData.Location,
-		Latitude:      forecast.City.Coord.Lat,
-		Longitude:     forecast.City.Coord.Lon,
-		Units:         todayData.Units,
-		SchemaVersion: 1,
-		DailyForecast: DailyCachedData{
-			TempHigh: todayData.TempHigh,
-			TempLow:  todayData.TempLow,
-			CityName: forecast.City.Name,
-			Country:  forecast.City.Country,
-			Timezone: forecast.City.Timezone,
-			Sunrise:  forecast.City.Sunrise,
-			Sunset:   forecast.City.Sunset,
-		},
-	}
-
-	// Marshal to TOML
-	data, err := toml.Marshal(cache)
-	if err != nil {
-		complete(fmt.Errorf("failed to marshal cache: %w", err))
-		return fmt.Errorf("failed to marshal cache data: %w", err)
-	}
-
-	// Write to temporary file first (atomic write)
-	tempFile := cm.filePath + ".tmp"
-	if err := os.WriteFile(tempFile, data, 0644); err != nil {
-		complete(fmt.Errorf("failed to write temp file: %w", err))
-		return fmt.Errorf("failed to write cache file: %w", err)
-	}
-
-	// Rename temp file to actual cache file (atomic operation)
-	if err := os.Rename(tempFile, cm.filePath); err != nil {
-		// Clean up temp file if rename fails
-		os.Remove(tempFile)
-		complete(fmt.Errorf("failed to rename temp file: %w", err))
-		return fmt.Errorf("failed to finalize cache file: %w", err)
-	}
-
-	complete(nil)
-	logger.Debug("Weather cache saved: created=%s, location=%s, high=%.1f, low=%.1f",
-		cache.CreatedOn, cache.Location, cache.DailyForecast.TempHigh, cache.DailyForecast.TempLow)
-
-	return nil
-}
-
 // Delete removes the cache file (used for testing or manual cache clearing)
 func (cm *CacheManager) Delete() error {
 	if err := os.Remove(cm.filePath); err != nil && !os.IsNotExist(err) {
@@ -214,10 +157,10 @@ func (cm *CacheManager) WriteOneCall(oneCall *OneCallResponse, todayData *TodayW
 		Units:         todayData.Units,
 		SchemaVersion: 1,
 		DailyForecast: DailyCachedData{
-			TempHigh: todayDaily.Temp.Max, // Proper daily maximum from One Call API
-			TempLow:  todayDaily.Temp.Min, // Proper daily minimum from One Call API
-			CityName: oneCall.Timezone,    // Using timezone as location identifier
-			Country:  "",                  // One Call doesn't provide country directly
+			TempHigh: todayDaily.Temp.Max,  // Proper daily maximum from One Call API
+			TempLow:  todayDaily.Temp.Min,  // Proper daily minimum from One Call API
+			CityName: todayData.Location,   // Use the actual city name from geocoding
+			Country:  todayData.Country,    // Country from geocoding
 			Timezone: oneCall.TimezoneOffset,
 			Sunrise:  todayDaily.Sunrise,
 			Sunset:   todayDaily.Sunset,

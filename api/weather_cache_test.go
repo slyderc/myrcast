@@ -64,25 +64,20 @@ func TestCacheManager_ReadWrite(t *testing.T) {
 
 	cm := NewCacheManager(cacheFile)
 
-	// Create test data
-	forecast := &ForecastResponse{
-		City: CityInfo{
-			Name:    "San Francisco",
-			Country: "US",
-			Coord: Coordinates{
-				Lat: 37.7749,
-				Lon: -122.4194,
-			},
-			Timezone: -28800,
-			Sunrise:  1700000000,
-			Sunset:   1700040000,
-		},
-		List: []ForecastItem{
+	// Create test data using One Call API format
+	oneCall := &OneCallResponse{
+		Lat:            37.7749,
+		Lon:            -122.4194,
+		Timezone:       "America/Los_Angeles",
+		TimezoneOffset: -28800,
+		Daily: []DailyData{
 			{
-				Dt: time.Now().Unix(),
-				Main: MainWeatherData{
-					Pressure: 1013.25,
-					Humidity: 65,
+				Dt:      time.Now().Unix(),
+				Sunrise: 1700000000,
+				Sunset:  1700040000,
+				Temp: DailyTemperature{
+					Max: 75.0,
+					Min: 60.0,
 				},
 			},
 		},
@@ -96,8 +91,8 @@ func TestCacheManager_ReadWrite(t *testing.T) {
 		LastUpdated: time.Now(),
 	}
 
-	// Test Write
-	if err := cm.Write(forecast, todayData); err != nil {
+	// Test WriteOneCall
+	if err := cm.WriteOneCall(oneCall, todayData); err != nil {
 		t.Fatalf("Failed to write cache: %v", err)
 	}
 
@@ -143,10 +138,18 @@ func TestCacheManager_AtomicWrite(t *testing.T) {
 
 	cm := NewCacheManager(cacheFile)
 
-	// Create initial cache
-	forecast := &ForecastResponse{
-		City: CityInfo{
-			Name: "Initial City",
+	// Create initial cache using One Call API format
+	oneCall := &OneCallResponse{
+		Lat:      37.7749,
+		Lon:      -122.4194,
+		Timezone: "Initial_City",
+		Daily: []DailyData{
+			{
+				Temp: DailyTemperature{
+					Max: 70.0,
+					Min: 50.0,
+				},
+			},
 		},
 	}
 	todayData := &TodayWeatherData{
@@ -154,7 +157,7 @@ func TestCacheManager_AtomicWrite(t *testing.T) {
 		Location: "Initial City",
 	}
 
-	if err := cm.Write(forecast, todayData); err != nil {
+	if err := cm.WriteOneCall(oneCall, todayData); err != nil {
 		t.Fatalf("Failed to write initial cache: %v", err)
 	}
 
@@ -162,11 +165,12 @@ func TestCacheManager_AtomicWrite(t *testing.T) {
 	cache1, _ := cm.Read()
 
 	// Write new data
-	forecast.City.Name = "Updated City"
+	oneCall.Timezone = "Updated_City"
+	oneCall.Daily[0].Temp.Max = 80.0
 	todayData.Location = "Updated City"
 	todayData.TempHigh = 80.0
 
-	if err := cm.Write(forecast, todayData); err != nil {
+	if err := cm.WriteOneCall(oneCall, todayData); err != nil {
 		t.Fatalf("Failed to write updated cache: %v", err)
 	}
 

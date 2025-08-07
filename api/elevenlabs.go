@@ -108,7 +108,7 @@ func (rl *ElevenLabsRateLimiter) Wait(ctx context.Context) error {
 	// Wait until we can make a request
 	sleepTime := rl.requests[0].Add(rl.window).Sub(now)
 	if sleepTime > 0 {
-		logger.LogWithFields(logger.InfoLevel, "ElevenLabs API rate limit reached, waiting", map[string]any{
+		logger.LogWithFields(logger.DebugLevel, "ElevenLabs API rate limit reached, waiting", map[string]any{
 			"wait_seconds": sleepTime.Seconds(),
 		})
 
@@ -299,7 +299,7 @@ func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Contex
 
 		// Log attempt
 		if attempt > 0 {
-			logger.LogWithFields(logger.InfoLevel, "Retrying ElevenLabs custom API request", map[string]any{
+			logger.LogWithFields(logger.DebugLevel, "Retrying ElevenLabs custom API request", map[string]any{
 				"attempt":     attempt + 1,
 				"max_retries": c.config.MaxRetries + 1,
 				"voice_id":    voiceID,
@@ -420,7 +420,7 @@ func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Contex
 
 		// Success!
 		if attempt > 0 {
-			logger.LogWithFields(logger.InfoLevel, "ElevenLabs custom API request succeeded after retries", map[string]any{
+			logger.LogWithFields(logger.DebugLevel, "ElevenLabs custom API request succeeded after retries", map[string]any{
 				"successful_attempt": attempt + 1,
 				"total_attempts":     attempt + 1,
 				"voice_id":           voiceID,
@@ -613,7 +613,7 @@ func (c *ElevenLabsClient) saveMP3Audio(audioData []byte, outputDir, fileName st
 		return "", fmt.Errorf("failed to write MP3 file: %w", err)
 	}
 
-	logger.LogWithFields(logger.InfoLevel, "MP3 audio file saved", map[string]any{
+	logger.LogWithFields(logger.DebugLevel, "MP3 audio file saved", map[string]any{
 		"file_path": mp3FilePath,
 		"file_size": len(audioData),
 	})
@@ -636,7 +636,7 @@ func (c *ElevenLabsClient) calculateMP3Duration(mp3FilePath string) (int, error)
 	estimatedSeconds := fileSizeKB / 16
 	estimatedMs := int(estimatedSeconds * 1000)
 
-	logger.LogWithFields(logger.InfoLevel, "MP3 duration estimated", map[string]any{
+	logger.LogWithFields(logger.DebugLevel, "MP3 duration estimated", map[string]any{
 		"file_path":    mp3FilePath,
 		"file_size_kb": fileSizeKB,
 		"duration_ms":  estimatedMs,

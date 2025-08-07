@@ -90,7 +90,7 @@ func (rl *ClaudeRateLimiter) Wait(ctx context.Context) error {
 	// Wait until we can make a request
 	sleepTime := rl.requests[0].Add(rl.window).Sub(now)
 	if sleepTime > 0 {
-		logger.LogWithFields(logger.InfoLevel, "Claude API rate limit reached, waiting", map[string]any{
+		logger.LogWithFields(logger.DebugLevel, "Claude API rate limit reached, waiting", map[string]any{
 			"wait_seconds": sleepTime.Seconds(),
 		})
 
@@ -131,14 +131,22 @@ func NewClaudeClient(config ClaudeConfig) (*ClaudeClient, error) {
 		return nil, fmt.Errorf("Claude API key is required")
 	}
 
+	// Validate configuration parameters
+	if config.Temperature < 0 || config.Temperature > 1.0 {
+		return nil, fmt.Errorf("temperature must be between 0 and 1.0, got %v", config.Temperature)
+	}
+	if config.MaxTokens < 0 {
+		return nil, fmt.Errorf("max_tokens must be non-negative, got %v", config.MaxTokens)
+	}
+
 	// Apply defaults to configuration
 	if config.Model == "" {
 		config.Model = defaultModel
 	}
-	if config.MaxTokens <= 0 {
+	if config.MaxTokens == 0 {
 		config.MaxTokens = defaultMaxTokens
 	}
-	if config.Temperature <= 0 {
+	if config.Temperature == 0 {
 		config.Temperature = defaultTemperature
 	}
 	if config.Timeout <= 0 {
@@ -174,8 +182,7 @@ func NewClaudeClient(config ClaudeConfig) (*ClaudeClient, error) {
 
 // WeatherReportRequest contains the request data for generating a weather report
 type WeatherReportRequest struct {
-	WeatherData    *ForecastResponse // Raw weather data from OpenWeather API
-	TodayData      *TodayWeatherData // Pre-extracted today's weather data
+	TodayData      *TodayWeatherData // Pre-extracted today's weather data from One Call API
 	PromptTemplate string            // Template with variable placeholders
 	Location       string            // Location name for the report
 	OutputPath     string            // Directory path for logging
@@ -300,7 +307,7 @@ func (c *ClaudeClient) executeWithRetry(ctx context.Context, messageReq anthropi
 
 		// Log attempt
 		if attempt > 0 {
-			logger.LogWithFields(logger.InfoLevel, "Retrying Claude API request", map[string]any{
+			logger.LogWithFields(logger.DebugLevel, "Retrying Claude API request", map[string]any{
 				"attempt":     attempt + 1,
 				"max_retries": c.config.MaxRetries + 1,
 			})
@@ -347,7 +354,7 @@ func (c *ClaudeClient) executeWithRetry(ctx context.Context, messageReq anthropi
 
 		// Success!
 		if attempt > 0 {
-			logger.LogWithFields(logger.InfoLevel, "Claude API request succeeded after retries", map[string]any{
+			logger.LogWithFields(logger.DebugLevel, "Claude API request succeeded after retries", map[string]any{
 				"successful_attempt": attempt + 1,
 				"total_attempts":     attempt + 1,
 			})
@@ -482,31 +489,10 @@ func (c *ClaudeClient) parseClaudeError(err error) *ClaudeAPIError {
 	}
 }
 
-// formatWeatherContext creates structured context from weather data (deprecated - use formatWeatherContextFromExtracted)
-func (c *ClaudeClient) formatWeatherContext(weather *ForecastResponse, location string) (string, error) {
-	if weather == nil {
-		return "", fmt.Errorf("weather data is nil")
-	}
-
-	// Extract today's weather data
-	weatherClient := &WeatherClient{} // We only need the extraction method
-	todayData, err := weatherClient.ExtractTodayWeather(weather)
-	if err != nil {
-		return "", fmt.Errorf("failed to extract today's weather: %w", err)
-	}
-
-	// Override location if provided
-	if location != "" {
-		todayData.Location = location
-	}
-
-	return c.formatWeatherContextFromExtracted(todayData)
-}
-
 // formatWeatherContextFromExtracted creates structured context from already-extracted weather data
 func (c *ClaudeClient) formatWeatherContextFromExtracted(todayData *TodayWeatherData) (string, error) {
 	if todayData == nil {
-		return "", fmt.Errorf("today weather data is nil")
+		return "", fmt.Errorf("today data is nil")
 	}
 
 	// Build structured context for Claude
@@ -635,10 +621,12 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	}
 
 	// Weather-specific contextual notes
-	if todayData.RainChance > 0.7 {
-		notes = append(notes, "Rain is likely - emphasize umbrella/rain gear, indoor alternatives")
+	if todayData.RainChance > 0.8 {
+		notes = append(notes, "Rain is very likely - emphasize rain gear, indoor alternatives like listening to music")
+	} else if todayData.RainChance > 0.7 {
+		notes = append(notes, "Rain is likely - emphasize rain gear, indoor alternatives like listening to music")
 	} else if todayData.RainChance > 0.5 {
-		notes = append(notes, "High rain probability - emphasize umbrella/rain gear, indoor alternatives")
+		notes = append(notes, "High rain probability - emphasize spinkles, indoor alternatives")
 	} else if todayData.RainChance < 0.3 {
 		notes = append(notes, "Rain is unlikely - good day for outdoor activities in a seasonal context")
 	}
@@ -994,7 +982,7 @@ Temperature: %.2f
 		return fmt.Errorf("failed to write to results.log: %w", err)
 	}
 
-	logger.LogWithFields(logger.InfoLevel, "Claude prompt logged to file", map[string]any{
+	logger.LogWithFields(logger.DebugLevel, "Claude prompt logged to file", map[string]any{
 		"log_file": logFilePath,
 		"location": request.Location,
 	})
@@ -1041,7 +1029,7 @@ func (c *ClaudeClient) appendScriptToLog(request WeatherReportRequest, script st
 		return fmt.Errorf("failed to write updated results.log: %w", err)
 	}
 
-	logger.LogWithFields(logger.InfoLevel, "Claude script appended to log file", map[string]any{
+	logger.LogWithFields(logger.DebugLevel, "Claude script appended to log file", map[string]any{
 		"log_file":      logFilePath,
 		"script_length": len(script),
 	})

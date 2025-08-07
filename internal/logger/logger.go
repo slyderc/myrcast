@@ -525,12 +525,12 @@ func LogAPIRequest(method, url string, headers map[string]string) {
 		fields = append(fields, "user_agent", userAgent)
 	}
 
-	Get().LogAttrs(context.Background(), slog.LevelInfo, "API request started", slog.Group("request", fields...))
+	Get().LogAttrs(context.Background(), slog.LevelDebug, "API request started", slog.Group("request", fields...))
 }
 
 // LogAPIResponse logs an API response with structured fields
 func LogAPIResponse(method, url string, statusCode int, duration string, bodySize int) {
-	level := slog.LevelInfo
+	level := slog.LevelDebug
 	if statusCode >= 400 {
 		level = slog.LevelWarn
 	}
@@ -604,12 +604,12 @@ func LogOperationStart(operation string, details map[string]any) func(error) {
 		attrs = append(attrs, slog.Group("details", detailAttrs...))
 	}
 
-	Get().LogAttrs(context.Background(), slog.LevelInfo, "Operation started", attrs...)
+	Get().LogAttrs(context.Background(), slog.LevelDebug, "Operation started", attrs...)
 
 	// Return completion function
 	return func(err error) {
 		duration := time.Since(startTime)
-		level := slog.LevelInfo
+		level := slog.LevelDebug
 		message := "Operation completed"
 
 		completionAttrs := []slog.Attr{

@@ -125,6 +125,7 @@ func main() {
 	}
 
 	// Application startup
+	logger.Info("=== MYRCAST SESSION STARTED ===")
 	logger.Info("Myrcast - Weather Report Generator")
 	logger.Debug("Starting with config: %s", *configPath)
 
@@ -178,7 +179,10 @@ func main() {
 		logger.Debug("Enhanced logging initialized from configuration")
 	}
 
-	logger.Debug("Weather location: %.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude)
+	// Log START message after final logger initialization
+	logger.Info("START")
+
+	logger.Debug("Weather coordinates: %.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude)
 	logger.Debug("Units: %s", cfg.Weather.Units)
 
 	// Handle dry-run mode
@@ -195,7 +199,8 @@ func main() {
 	}
 
 	// Run the main weather report generation workflow
-	if err := runWeatherReportWorkflow(cfg); err != nil {
+	locationName, err := runWeatherReportWorkflow(cfg)
+	if err != nil {
 		logger.Error("Weather report generation failed: %v", err)
 
 		// Log execution summary for failed run
@@ -223,7 +228,7 @@ func main() {
 	// Log execution summary for successful run
 	results := []string{
 		"Weather report generation completed successfully",
-		fmt.Sprintf("Weather location: %.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude),
+		fmt.Sprintf("Weather location: %s", locationName),
 		fmt.Sprintf("Output directory: %s", cfg.Output.ImportPath),
 	}
 	logger.Get().LogExecutionSummary(startTime, *configPath, "weather-report", results, ExitSuccess)
@@ -362,7 +367,7 @@ func validateWindowsPath(path string) error {
 }
 
 // runWeatherReportWorkflow orchestrates the complete weather report generation process
-func runWeatherReportWorkflow(cfg *config.Config) error {
+func runWeatherReportWorkflow(cfg *config.Config) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -388,7 +393,7 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	}
 	claudeClient, err := api.NewClaudeClient(claudeConfig)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Claude client: %w", err)
+		return "", fmt.Errorf("failed to initialize Claude client: %w", err)
 	}
 	logger.Debug("Claude client initialized")
 
@@ -409,7 +414,7 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	}
 	elevenLabsClient, err := api.NewElevenLabsClient(elevenLabsConfig)
 	if err != nil {
-		return fmt.Errorf("failed to initialize ElevenLabs client: %w", err)
+		return "", fmt.Errorf("failed to initialize ElevenLabs client: %w", err)
 	}
 	logger.Debug("ElevenLabs client initialized")
 
@@ -426,12 +431,11 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	}
 
 	// Use the new One Call API with cache support
-	todayWeather, oneCallData, err := weatherClient.GetTodayWeatherWithOneCallCache(ctx, forecastParams, cfg.Weather.Units, cacheManager)
+	todayWeather, _, err := weatherClient.GetTodayWeatherWithOneCallCache(ctx, forecastParams, cfg.Weather.Units, cacheManager)
 	if err != nil {
-		return fmt.Errorf("failed to fetch weather data: %w", err)
+		return "", fmt.Errorf("failed to fetch weather data: %w", err)
 	}
-	logger.Debug("Weather data fetched successfully for location: %.4f, %.4f",
-		cfg.Weather.Latitude, cfg.Weather.Longitude)
+	logger.Debug("Weather data fetched successfully for location: %s", todayWeather.Location)
 	logger.Debug("Current conditions: %s, %.1f%s",
 		todayWeather.CurrentConditions, todayWeather.CurrentTemp,
 		api.GetUnitSuffix("temperature", cfg.Weather.Units))
@@ -442,21 +446,16 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	// Step 4: Generate weather report script using Claude
 	logger.Info("Generating weather report script...")
 
-	// Convert One Call data to ForecastResponse format for backward compatibility with Claude
-	// This allows the Claude client to work with both APIs
-	forecast := convertOneCallToForecastResponse(oneCallData, todayWeather)
-
 	reportRequest := api.WeatherReportRequest{
 		PromptTemplate: cfg.Prompt.Template,
-		WeatherData:    forecast,
-		TodayData:      todayWeather, // Pass the real extracted data with correct daily min/max
+		TodayData:      todayWeather, // Direct use of One Call API extracted data
 		Location:       fmt.Sprintf("%.4f, %.4f", cfg.Weather.Latitude, cfg.Weather.Longitude),
 		OutputPath:     cfg.Output.ImportPath,
 	}
 
 	reportResponse, err := claudeClient.GenerateWeatherReport(ctx, reportRequest)
 	if err != nil {
-		return fmt.Errorf("failed to generate weather report script: %w", err)
+		return todayWeather.Location, fmt.Errorf("failed to generate weather report script: %w", err)
 	}
 	logger.Debug("Weather report script generated successfully (%d characters)", len(reportResponse.Script))
 
@@ -465,7 +464,7 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 
 	// Ensure import directory exists
 	if err := os.MkdirAll(cfg.Output.ImportPath, 0755); err != nil {
-		return fmt.Errorf("failed to create import directory: %w", err)
+		return todayWeather.Location, fmt.Errorf("failed to create import directory: %w", err)
 	}
 
 	speechRequest := api.TextToSpeechRequest{
@@ -476,7 +475,7 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 
 	speechResponse, err := elevenLabsClient.GenerateTextToSpeech(ctx, speechRequest)
 	if err != nil {
-		return fmt.Errorf("failed to convert script to speech: %w", err)
+		return todayWeather.Location, fmt.Errorf("failed to convert script to speech: %w", err)
 	}
 	logger.Debug("Speech generation completed successfully")
 	logger.Debug("Audio file created: %s (%d ms)", speechResponse.AudioFilePath, speechResponse.DurationMs)
@@ -485,7 +484,7 @@ func runWeatherReportWorkflow(cfg *config.Config) error {
 	logger.Debug("Weather report saved successfully: %s", speechResponse.AudioFilePath)
 	logger.Debug("Ready for import into Myriad radio automation")
 
-	return nil
+	return todayWeather.Location, nil
 }
 
 // Helper functions for error type checking
@@ -506,86 +505,6 @@ func isFileSystemError(err error) bool {
 		strings.Contains(err.Error(), "failed to copy") ||
 		strings.Contains(err.Error(), "directory") ||
 		strings.Contains(err.Error(), "file")
-}
-
-// convertOneCallToForecastResponse converts One Call API data to ForecastResponse format
-// for backward compatibility with existing Claude integration
-func convertOneCallToForecastResponse(oneCall *api.OneCallResponse, todayData *api.TodayWeatherData) *api.ForecastResponse {
-	if oneCall == nil {
-		// Create minimal structure if no One Call data available (shouldn't happen normally)
-		return &api.ForecastResponse{
-			List: []api.ForecastItem{
-				{
-					Dt: time.Now().Unix(),
-					Main: api.MainWeatherData{
-						Temp:      todayData.CurrentTemp,
-						FeelsLike: todayData.CurrentTemp,
-						TempMin:   todayData.TempLow,
-						TempMax:   todayData.TempHigh,
-						Pressure:  1013.25,
-						Humidity:  50,
-					},
-					Weather: []api.WeatherCondition{
-						{
-							Main:        todayData.CurrentConditions,
-							Description: todayData.CurrentConditions,
-						},
-					},
-					Wind: api.WindData{
-						Speed: 10.0,
-						Deg:   180,
-					},
-					Pop: todayData.RainChance,
-				},
-			},
-			City: api.CityInfo{
-				Name: todayData.Location,
-			},
-		}
-	}
-
-	// Convert One Call data to ForecastResponse format
-	forecast := &api.ForecastResponse{
-		Cod: "200",
-		Cnt: 1,
-		List: []api.ForecastItem{
-			{
-				Dt: oneCall.Current.Dt,
-				Main: api.MainWeatherData{
-					Temp:      oneCall.Current.Temp,
-					FeelsLike: oneCall.Current.FeelsLike,
-					TempMin:   todayData.TempLow,  // Use extracted daily low
-					TempMax:   todayData.TempHigh, // Use extracted daily high
-					Pressure:  float64(oneCall.Current.Pressure),
-					Humidity:  oneCall.Current.Humidity,
-				},
-				Weather: oneCall.Current.Weather,
-				Clouds:  api.CloudData{All: oneCall.Current.Clouds},
-				Wind: api.WindData{
-					Speed: oneCall.Current.WindSpeed,
-					Deg:   float64(oneCall.Current.WindDeg),
-					Gust:  oneCall.Current.WindGust,
-				},
-				Pop: todayData.RainChance,
-			},
-		},
-		City: api.CityInfo{
-			Name: todayData.Location,
-			Coord: api.Coordinates{
-				Lat: oneCall.Lat,
-				Lon: oneCall.Lon,
-			},
-			Timezone: oneCall.TimezoneOffset,
-		},
-	}
-
-	// Add sunrise/sunset from daily data if available
-	if len(oneCall.Daily) > 0 {
-		forecast.City.Sunrise = oneCall.Daily[0].Sunrise
-		forecast.City.Sunset = oneCall.Daily[0].Sunset
-	}
-
-	return forecast
 }
 
 // copyFile copies a file from src to dst
