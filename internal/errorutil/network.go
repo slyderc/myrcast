@@ -13,12 +13,12 @@ import (
 
 // NetworkError represents a network-related error with additional context
 type NetworkError struct {
-	Operation   string        // The operation that failed (e.g., "API request", "DNS lookup")
-	URL         string        // The URL that was being accessed
-	StatusCode  int           // HTTP status code (if applicable)
-	Timeout     time.Duration // Timeout duration (if applicable)
-	Underlying  error         // The underlying error
-	Retryable   bool          // Whether this error is retryable
+	Operation  string        // The operation that failed (e.g., "API request", "DNS lookup")
+	URL        string        // The URL that was being accessed
+	StatusCode int           // HTTP status code (if applicable)
+	Timeout    time.Duration // Timeout duration (if applicable)
+	Underlying error         // The underlying error
+	Retryable  bool          // Whether this error is retryable
 }
 
 func (e *NetworkError) Error() string {
@@ -124,10 +124,10 @@ func isRetryableError(err error) bool {
 	statusCode := extractStatusCode(err)
 	switch statusCode {
 	case http.StatusTooManyRequests,
-		 http.StatusInternalServerError,
-		 http.StatusBadGateway,
-		 http.StatusServiceUnavailable,
-		 http.StatusGatewayTimeout:
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
 		return true
 	}
 
@@ -184,8 +184,8 @@ func isConnectionRefusedError(err error) bool {
 
 	// Check for connection refused in various error types
 	errStr := err.Error()
-	return contains(errStr, "connection refused") || 
-		   contains(errStr, "connect: connection refused")
+	return contains(errStr, "connection refused") ||
+		contains(errStr, "connect: connection refused")
 }
 
 // extractStatusCode attempts to extract HTTP status code from various error types
@@ -216,12 +216,12 @@ func extractTimeout(err error) time.Duration {
 
 // contains is a helper function for case-insensitive string searching
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    len(s) > len(substr) && 
-		    (s[:len(substr)] == substr || 
-		     s[len(s)-len(substr):] == substr ||
-		     anySubstring(s, substr)))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					anySubstring(s, substr)))
 }
 
 // anySubstring checks if substr exists anywhere in s

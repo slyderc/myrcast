@@ -554,7 +554,7 @@ func (c *ClaudeClient) formatWeatherContextFromExtracted(todayData *TodayWeather
 
 	// Radio broadcast guidance with enhanced contextual information
 	context.WriteString("BROADCAST NOTES:\n")
-	
+
 	// Add comprehensive contextual information
 	now := time.Now()
 	contextualNotes := c.generateContextualBroadcastNotes(todayData, now)
@@ -569,15 +569,15 @@ func (c *ClaudeClient) formatWeatherContextFromExtracted(todayData *TodayWeather
 // based on current time, weather conditions, and seasonal/holiday awareness
 func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherData, now time.Time) []string {
 	var notes []string
-	
+
 	// Time of day context
 	hour := now.Hour()
 	timeOfDay := c.getTimeOfDay(now)
 	notes = append(notes, fmt.Sprintf("Broadcast time of day: %s", timeOfDay))
-	
+
 	// Radio broadcast guidance
 	notes = append(notes, "Use radio-friendly tone: conversational, clear, fun, and very engaging")
-	
+
 	// Day of week context
 	weekday := now.Weekday()
 	isWeekend := weekday == time.Saturday || weekday == time.Sunday
@@ -595,11 +595,11 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 			notes = append(notes, "Off-peak hours: consider more conversational, detailed approach")
 		}
 	}
-	
+
 	// Season and time of year context
 	season := c.getSeason(now)
 	notes = append(notes, fmt.Sprintf("Season: %s - tailor weather discussion for seasonal relevance", season))
-	
+
 	// Seasonal weather emphasis
 	switch season {
 	case "winter":
@@ -623,7 +623,7 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 			notes = append(notes, "Fall winds - good opportunity for autumn weather imagery")
 		}
 	}
-	
+
 	// Holiday awareness
 	if c.isHoliday(now) {
 		holidayName := c.getHolidayName(now)
@@ -633,7 +633,7 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 			notes = append(notes, "Holiday period - consider festive tone and travel weather impacts where appropriate")
 		}
 	}
-	
+
 	// Weather-specific contextual notes
 	if todayData.RainChance > 0.7 {
 		notes = append(notes, "Rain is likely - emphasize umbrella/rain gear, indoor alternatives")
@@ -642,18 +642,18 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	} else if todayData.RainChance < 0.3 {
 		notes = append(notes, "Rain is unlikely - good day for outdoor activities in a seasonal context")
 	}
-	
+
 	// Temperature-specific guidance (regardless of season)
 	hotThreshold := 85.0  // Fahrenheit
 	coldThreshold := 32.0 // Fahrenheit
 	coolThreshold := 50.0 // Fahrenheit
-	
+
 	if todayData.Units == "metric" {
-		hotThreshold = 29.0   // ~85°F in Celsius
-		coldThreshold = 0.0   // Freezing in Celsius
-		coolThreshold = 10.0  // ~50°F in Celsius
+		hotThreshold = 29.0  // ~85°F in Celsius
+		coldThreshold = 0.0  // Freezing in Celsius
+		coolThreshold = 10.0 // ~50°F in Celsius
 	}
-	
+
 	if todayData.TempHigh > hotThreshold || todayData.CurrentTemp > hotThreshold {
 		notes = append(notes, "Hot day - emphasize hydration, cooling, outdoor safety")
 	} else if todayData.TempHigh < coldThreshold || todayData.CurrentTemp < coldThreshold {
@@ -661,14 +661,14 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 	} else if todayData.TempHigh < coolThreshold {
 		notes = append(notes, "Cool day - suggest layered clothing")
 	}
-	
+
 	if todayData.CurrentTemp != 0 && todayData.TempHigh != 0 {
 		tempRange := todayData.TempHigh - todayData.TempLow
 		if tempRange > 25 {
 			notes = append(notes, "Large temperature swing - mention layering clothes, changing conditions throughout day")
 		}
 	}
-	
+
 	// Wind conditions context
 	if todayData.WindConditions != "" {
 		windLower := strings.ToLower(todayData.WindConditions)
@@ -676,27 +676,27 @@ func (c *ClaudeClient) generateContextualBroadcastNotes(todayData *TodayWeatherD
 			notes = append(notes, "Strong winds - mention outdoor activity impacts, potential power/tree concerns")
 		}
 	}
-	
+
 	// Special weather alerts context
 	if len(todayData.WeatherAlerts) > 0 {
 		notes = append(notes, "Weather alerts active - maintain serious, informative tone while being reassuring")
 	}
-	
+
 	// Location-specific notes (Seattle context from config)
 	cityLocation := strings.ToLower(todayData.Location)
 	if strings.Contains(cityLocation, "seattle") || strings.Contains(cityLocation, "47.6") {
 		notes = append(notes, "Seattle area - reference local landmarks, ferry conditions, mountain visibility if clear")
-		if strings.Contains(strings.ToLower(todayData.CurrentConditions), "clear") || 
-		   strings.Contains(strings.ToLower(todayData.CurrentConditions), "sunny") {
+		if strings.Contains(strings.ToLower(todayData.CurrentConditions), "clear") ||
+			strings.Contains(strings.ToLower(todayData.CurrentConditions), "sunny") {
 			notes = append(notes, "Clear Seattle weather - rare treat! Mention mountain views, outdoor opportunities")
 		}
 	}
-	
+
 	// Broadcast timing urgency
 	if c.isUrgentTime(now) {
 		notes = append(notes, "Peak listening time! Prioritize essential information, keep engaging and fun but concise")
 	}
-	
+
 	return notes
 }
 
@@ -708,7 +708,7 @@ func (c *ClaudeClient) getTimeOfDay(t time.Time) string {
 	case hour >= 5 && hour < 12:
 		return "morning"
 	case hour >= 12 && hour < 17:
-		return "afternoon" 
+		return "afternoon"
 	case hour >= 17 && hour < 22:
 		return "evening"
 	default:
@@ -737,7 +737,7 @@ func (c *ClaudeClient) isHoliday(t time.Time) bool {
 func (c *ClaudeClient) getHolidayName(t time.Time) string {
 	month := t.Month()
 	day := t.Day()
-	
+
 	// Major fixed holidays
 	switch {
 	case month == time.January && day == 1:
@@ -757,7 +757,7 @@ func (c *ClaudeClient) getHolidayName(t time.Time) string {
 	case month == time.December && day == 31:
 		return "New Year's Eve"
 	}
-	
+
 	// Variable holidays (simplified check)
 	if month == time.November && c.isNthWeekdayOfMonth(t, 4, time.Thursday) {
 		return "Thanksgiving"
@@ -768,14 +768,14 @@ func (c *ClaudeClient) getHolidayName(t time.Time) string {
 	if month == time.September && c.isNthWeekdayOfMonth(t, 1, time.Monday) {
 		return "Labor Day"
 	}
-	
+
 	return ""
 }
 
 func (c *ClaudeClient) checkUSHolidays(t time.Time) bool {
 	month := t.Month()
 	day := t.Day()
-	
+
 	// Fixed holidays
 	fixedHolidays := map[time.Month][]int{
 		time.January:  {1},      // New Year's Day
@@ -786,7 +786,7 @@ func (c *ClaudeClient) checkUSHolidays(t time.Time) bool {
 		time.November: {11},     // Veterans Day
 		time.December: {25, 31}, // Christmas Day, New Year's Eve
 	}
-	
+
 	if days, exists := fixedHolidays[month]; exists {
 		for _, holidayDay := range days {
 			if day == holidayDay {
@@ -794,7 +794,7 @@ func (c *ClaudeClient) checkUSHolidays(t time.Time) bool {
 			}
 		}
 	}
-	
+
 	// Variable holidays
 	switch month {
 	case time.January:
@@ -812,14 +812,14 @@ func (c *ClaudeClient) checkUSHolidays(t time.Time) bool {
 	case time.November:
 		return c.isNthWeekdayOfMonth(t, 4, time.Thursday) // Thanksgiving
 	}
-	
+
 	return false
 }
 
 func (c *ClaudeClient) checkInternationalHolidays(t time.Time) bool {
 	month := t.Month()
 	day := t.Day()
-	
+
 	internationalHolidays := map[time.Month][]int{
 		time.January:  {1},  // New Year's Day
 		time.February: {14}, // Valentine's Day
@@ -829,7 +829,7 @@ func (c *ClaudeClient) checkInternationalHolidays(t time.Time) bool {
 		time.October:  {31}, // Halloween
 		time.December: {25}, // Christmas Day
 	}
-	
+
 	if days, exists := internationalHolidays[month]; exists {
 		for _, holidayDay := range days {
 			if day == holidayDay {
@@ -837,7 +837,7 @@ func (c *ClaudeClient) checkInternationalHolidays(t time.Time) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -845,13 +845,13 @@ func (c *ClaudeClient) isNthWeekdayOfMonth(t time.Time, n int, weekday time.Week
 	if t.Weekday() != weekday {
 		return false
 	}
-	
+
 	firstOfMonth := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
 	firstWeekday := firstOfMonth
 	for firstWeekday.Weekday() != weekday {
 		firstWeekday = firstWeekday.AddDate(0, 0, 1)
 	}
-	
+
 	nthWeekday := firstWeekday.AddDate(0, 0, (n-1)*7)
 	return t.Day() == nthWeekday.Day() && t.Month() == nthWeekday.Month()
 }
@@ -860,22 +860,22 @@ func (c *ClaudeClient) isLastWeekdayOfMonth(t time.Time, weekday time.Weekday) b
 	if t.Weekday() != weekday {
 		return false
 	}
-	
+
 	nextMonth := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, t.Location())
 	lastOfMonth := nextMonth.AddDate(0, 0, -1)
-	
+
 	lastWeekday := lastOfMonth
 	for lastWeekday.Weekday() != weekday {
 		lastWeekday = lastWeekday.AddDate(0, 0, -1)
 	}
-	
+
 	return t.Day() == lastWeekday.Day()
 }
 
 func (c *ClaudeClient) isUrgentTime(t time.Time) bool {
 	hour := t.Hour()
 	weekday := t.Weekday()
-	
+
 	// Business hours on weekdays are less urgent than off-hours
 	if weekday >= time.Monday && weekday <= time.Friday {
 		// Morning/evening commute times are urgent
@@ -883,7 +883,7 @@ func (c *ClaudeClient) isUrgentTime(t time.Time) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -1020,7 +1020,7 @@ func (c *ClaudeClient) appendScriptToLog(request WeatherReportRequest, script st
 	// Find the "=== END LOG ENTRY ===" line and insert the script before it
 	existingContent := string(content)
 	endMarker := "=== END LOG ENTRY ==="
-	
+
 	// Check if the end marker exists
 	if !strings.Contains(existingContent, endMarker) {
 		return fmt.Errorf("end log entry marker not found in results.log")
@@ -1042,7 +1042,7 @@ func (c *ClaudeClient) appendScriptToLog(request WeatherReportRequest, script st
 	}
 
 	logger.LogWithFields(logger.InfoLevel, "Claude script appended to log file", map[string]any{
-		"log_file":     logFilePath,
+		"log_file":      logFilePath,
 		"script_length": len(script),
 	})
 

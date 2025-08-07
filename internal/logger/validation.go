@@ -22,18 +22,18 @@ func (e *FilenameValidationError) Error() string {
 	for i, char := range e.InvalidChars {
 		charList[i] = fmt.Sprintf("'%c'", char)
 	}
-	
-	msg := fmt.Sprintf("invalid filename pattern %q contains invalid characters: %s", 
+
+	msg := fmt.Sprintf("invalid filename pattern %q contains invalid characters: %s",
 		e.Pattern, strings.Join(charList, ", "))
-	
+
 	if e.Platform != "all" {
 		msg += fmt.Sprintf(" (invalid on %s)", e.Platform)
 	}
-	
+
 	if e.Suggestion != "" {
 		msg += fmt.Sprintf(". Suggestion: %s", e.Suggestion)
 	}
-	
+
 	return msg
 }
 
@@ -45,7 +45,7 @@ func ValidateFilenamePattern(pattern string) error {
 
 	// Determine if this is a full path or just a filename pattern
 	isFullPath := isAbsolutePath(pattern)
-	
+
 	var filenameOnly string
 	if isFullPath {
 		// For full paths, extract just the filename part
@@ -63,7 +63,7 @@ func ValidateFilenamePattern(pattern string) error {
 		}
 		filenameOnly = pattern
 	}
-	
+
 	// Validate the filename part for platform-specific invalid characters
 	invalidChars := findInvalidCharsInFilename(filenameOnly)
 	if len(invalidChars) > 0 {
@@ -72,7 +72,7 @@ func ValidateFilenamePattern(pattern string) error {
 		if runtime.GOOS == "windows" {
 			platform = "Windows"
 		}
-		
+
 		return &FilenameValidationError{
 			Pattern:      pattern,
 			InvalidChars: invalidChars,
@@ -104,20 +104,20 @@ func isAbsolutePath(pattern string) bool {
 // findInvalidCharsInFilename returns invalid characters found in the filename part only
 func findInvalidCharsInFilename(filename string) []rune {
 	var invalid []rune
-	
+
 	// Universal invalid characters (only null byte for filenames in full paths)
 	filenameInvalid := []rune{'\x00'}
-	
+
 	// Windows-specific invalid characters in filenames
 	windowsInvalid := []rune{'<', '>', ':', '"', '|', '?', '*'}
-	
+
 	// Check for null bytes
 	for _, char := range filenameInvalid {
 		if strings.ContainsRune(filename, char) {
 			invalid = append(invalid, char)
 		}
 	}
-	
+
 	// Check Windows-specific chars if on Windows
 	if runtime.GOOS == "windows" {
 		for _, char := range windowsInvalid {
@@ -126,7 +126,7 @@ func findInvalidCharsInFilename(filename string) []rune {
 			}
 		}
 	}
-	
+
 	return invalid
 }
 
@@ -134,31 +134,31 @@ func findInvalidCharsInFilename(filename string) []rune {
 func getSuggestionForFilename(fullPattern, filename string, invalidChars []rune) string {
 	// Start with the original filename
 	suggestion := filename
-	
+
 	// Replace common problematic patterns with safe alternatives
 	replacements := map[rune]string{
-		'/':  "-",  // MM/DD/YYYY -> MM-DD-YYYY
-		'\\': "-",  // Similar for backslash
-		':':  "-",  // HH:MM:SS -> HH-MM-SS
-		'|':  "-",  // YYYY|MM -> YYYY-MM
-		'*':  "X",  // app-* -> app-X
-		'?':  "X",  // app-? -> app-X
-		'<':  "",   // Remove
-		'>':  "",   // Remove
-		'"':  "",   // Remove
+		'/':  "-", // MM/DD/YYYY -> MM-DD-YYYY
+		'\\': "-", // Similar for backslash
+		':':  "-", // HH:MM:SS -> HH-MM-SS
+		'|':  "-", // YYYY|MM -> YYYY-MM
+		'*':  "X", // app-* -> app-X
+		'?':  "X", // app-? -> app-X
+		'<':  "",  // Remove
+		'>':  "",  // Remove
+		'"':  "",  // Remove
 	}
-	
+
 	for _, char := range invalidChars {
 		if replacement, exists := replacements[char]; exists {
 			suggestion = strings.ReplaceAll(suggestion, string(char), replacement)
 		}
 	}
-	
+
 	// Clean up multiple consecutive dashes
 	for strings.Contains(suggestion, "--") {
 		suggestion = strings.ReplaceAll(suggestion, "--", "-")
 	}
-	
+
 	// Combine fixed filename with original directory path
 	dir := extractDirectory(fullPattern)
 	if dir == "" {
@@ -179,7 +179,7 @@ func extractFilename(pattern string) string {
 	return filepath.Base(pattern)
 }
 
-// extractDirectory extracts the directory from a pattern, handling both Unix and Windows paths  
+// extractDirectory extracts the directory from a pattern, handling both Unix and Windows paths
 func extractDirectory(pattern string) string {
 	// Handle Windows paths by checking for backslashes
 	if strings.Contains(pattern, "\\") {
@@ -201,25 +201,25 @@ func extractDirectory(pattern string) string {
 // GetSafeFilenamePatterns returns a list of recommended safe patterns
 func GetSafeFilenamePatterns() []string {
 	return []string{
-		"myrcast-YYYYMMDD.log",           // Compact format
-		"myrcast-YYYY-MM-DD.log",         // ISO format with dashes
-		"myrcast-YYYY.MM.DD.log",         // Dot-separated format
-		"myrcast_YYYY_MM_DD.log",         // Underscore format
-		"myrcast-YYYYMMDD-HHMMSS.log",    // With time (compact)
-		"myrcast-YYYY-MM-DD-HH-MM.log",   // With time (readable)
+		"myrcast-YYYYMMDD.log",         // Compact format
+		"myrcast-YYYY-MM-DD.log",       // ISO format with dashes
+		"myrcast-YYYY.MM.DD.log",       // Dot-separated format
+		"myrcast_YYYY_MM_DD.log",       // Underscore format
+		"myrcast-YYYYMMDD-HHMMSS.log",  // With time (compact)
+		"myrcast-YYYY-MM-DD-HH-MM.log", // With time (readable)
 	}
 }
 
 // GetUnsafeFilenamePatterns returns examples of patterns to avoid
 func GetUnsafeFilenamePatterns() map[string]string {
 	return map[string]string{
-		"myrcast-MM/DD/YYYY.log":    "Forward slashes create subdirectories",
-		"myrcast-HH:MM:SS.log":      "Colons invalid on Windows",
-		"myrcast-YYYY|MM|DD.log":    "Pipes invalid on Windows", 
-		"myrcast-*-YYYYMMDD.log":    "Asterisks invalid on Windows",
-		"myrcast-?-YYYYMMDD.log":    "Question marks invalid on Windows",
-		"myrcast-<YYYY>.log":        "Angle brackets invalid on Windows",
-		"myrcast-\"YYYY\".log":      "Quotes invalid on Windows",
-		"myrcast\\YYYY\\MM.log":     "Backslashes create subdirectories",
+		"myrcast-MM/DD/YYYY.log": "Forward slashes create subdirectories",
+		"myrcast-HH:MM:SS.log":   "Colons invalid on Windows",
+		"myrcast-YYYY|MM|DD.log": "Pipes invalid on Windows",
+		"myrcast-*-YYYYMMDD.log": "Asterisks invalid on Windows",
+		"myrcast-?-YYYYMMDD.log": "Question marks invalid on Windows",
+		"myrcast-<YYYY>.log":     "Angle brackets invalid on Windows",
+		"myrcast-\"YYYY\".log":   "Quotes invalid on Windows",
+		"myrcast\\YYYY\\MM.log":  "Backslashes create subdirectories",
 	}
 }

@@ -12,11 +12,11 @@ import (
 
 // FileError represents a file operation error with additional context
 type FileError struct {
-	Operation string // The operation that failed (e.g., "read", "write", "create")
-	Path      string // The file path that was being accessed
-	Size      int64  // File size (if applicable)
-	Perm      os.FileMode // File permissions (if applicable)
-	Underlying error // The underlying error
+	Operation  string      // The operation that failed (e.g., "read", "write", "create")
+	Path       string      // The file path that was being accessed
+	Size       int64       // File size (if applicable)
+	Perm       os.FileMode // File permissions (if applicable)
+	Underlying error       // The underlying error
 }
 
 func (e *FileError) Error() string {

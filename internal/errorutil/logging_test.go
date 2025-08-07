@@ -104,7 +104,7 @@ func TestExecuteWithLogging(t *testing.T) {
 	t.Run("successful execution", func(t *testing.T) {
 		logOutput.Reset()
 		executed := false
-		
+
 		err := ExecuteWithLogging(logger, "successful operation", func() error {
 			executed = true
 			time.Sleep(50 * time.Millisecond)
@@ -133,7 +133,7 @@ func TestExecuteWithLogging(t *testing.T) {
 	t.Run("failed execution", func(t *testing.T) {
 		logOutput.Reset()
 		testErr := errors.New("execution failed")
-		
+
 		err := ExecuteWithLogging(logger, "failing operation", func() error {
 			return testErr
 		})
@@ -162,13 +162,13 @@ func TestContextHelpers(t *testing.T) {
 		if len(attrs) != 3 {
 			t.Errorf("Expected 3 attributes, got %d", len(attrs))
 		}
-		
+
 		// Check attribute values
 		found := make(map[string]bool)
 		for _, attr := range attrs {
 			found[attr.Key] = true
 		}
-		
+
 		if !found["latitude"] || !found["longitude"] || !found["units"] {
 			t.Error("Missing expected weather context attributes")
 		}
@@ -182,7 +182,7 @@ func TestContextHelpers(t *testing.T) {
 		if attrs[0].Key != "config_file" {
 			t.Error("Wrong attribute key for config context")
 		}
-		
+
 		// Test empty config
 		emptyAttrs := ConfigContext("")
 		if len(emptyAttrs) != 0 {
@@ -215,7 +215,7 @@ func TestContextHelpers(t *testing.T) {
 		if len(attrs) != 2 {
 			t.Errorf("Expected 2 attributes, got %d", len(attrs))
 		}
-		
+
 		// Test partial context
 		partialAttrs := APIContext("", "model-only")
 		if len(partialAttrs) != 1 {
@@ -228,7 +228,7 @@ func TestContextHelpers(t *testing.T) {
 		if len(attrs) != 3 {
 			t.Errorf("Expected 3 attributes, got %d", len(attrs))
 		}
-		
+
 		// Test with zero values
 		partialAttrs := AudioContext("wav", 0, 0)
 		if len(partialAttrs) != 1 {

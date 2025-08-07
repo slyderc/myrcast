@@ -45,7 +45,7 @@ func TestValidateFilenamePattern(t *testing.T) {
 			pattern:     "",
 			shouldError: false,
 		},
-		
+
 		// Invalid patterns - universal
 		{
 			name:        "pattern with forward slashes",
@@ -59,7 +59,7 @@ func TestValidateFilenamePattern(t *testing.T) {
 			shouldError: true,
 			errorType:   "'\\'",
 		},
-		
+
 		// Invalid patterns - Windows specific
 		{
 			name:        "pattern with colon",
@@ -103,16 +103,16 @@ func TestValidateFilenamePattern(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateFilenamePattern(tt.pattern)
 			if (err != nil) != tt.shouldError {
-				t.Errorf("ValidateFilenamePattern(%s) error = %v, shouldError %v", 
+				t.Errorf("ValidateFilenamePattern(%s) error = %v, shouldError %v",
 					tt.pattern, err, tt.shouldError)
 			}
-			
+
 			if err != nil && tt.shouldError {
 				// Verify it's a FilenameValidationError
 				if _, ok := err.(*FilenameValidationError); !ok {
 					t.Errorf("Expected FilenameValidationError, got %T", err)
 				}
-				
+
 				// Check that error message contains expected context
 				errMsg := err.Error()
 				if tt.errorType != "" && !containsAny(errMsg, tt.errorType) {
@@ -145,7 +145,7 @@ func TestFilenameValidationError(t *testing.T) {
 
 	for _, expected := range expectedParts {
 		if !containsAny(errMsg, expected) {
-			t.Errorf("Error message missing expected part: %s\nFull message: %s", 
+			t.Errorf("Error message missing expected part: %s\nFull message: %s",
 				expected, errMsg)
 		}
 	}
@@ -154,11 +154,11 @@ func TestFilenameValidationError(t *testing.T) {
 // TestGetSafeFilenamePatterns tests the safe pattern recommendations
 func TestGetSafeFilenamePatterns(t *testing.T) {
 	patterns := GetSafeFilenamePatterns()
-	
+
 	if len(patterns) == 0 {
 		t.Error("GetSafeFilenamePatterns returned no patterns")
 	}
-	
+
 	// All safe patterns should validate successfully
 	for _, pattern := range patterns {
 		if err := ValidateFilenamePattern(pattern); err != nil {
@@ -170,17 +170,17 @@ func TestGetSafeFilenamePatterns(t *testing.T) {
 // TestGetUnsafeFilenamePatterns tests the unsafe pattern examples
 func TestGetUnsafeFilenamePatterns(t *testing.T) {
 	unsafePatterns := GetUnsafeFilenamePatterns()
-	
+
 	if len(unsafePatterns) == 0 {
 		t.Error("GetUnsafeFilenamePatterns returned no patterns")
 	}
-	
+
 	// Verify each unsafe pattern has a reason
 	for pattern, reason := range unsafePatterns {
 		if reason == "" {
 			t.Errorf("Unsafe pattern %s has no reason", pattern)
 		}
-		
+
 		// Most unsafe patterns should fail validation
 		// (some may be platform-specific)
 		err := ValidateFilenamePattern(pattern)
@@ -201,14 +201,14 @@ func TestIsAbsolutePath(t *testing.T) {
 		{"/absolute/path", true, "unix"},
 		{"relative/path", false, "unix"},
 		{"./relative", false, "unix"},
-		
+
 		// Windows paths
 		{`C:\Windows\Path`, true, "windows"},
 		{`D:\`, true, "windows"},
 		{`\\server\share`, true, "windows"},
 		{`relative\path`, false, "windows"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			// Skip platform-specific tests on wrong platform
@@ -218,10 +218,10 @@ func TestIsAbsolutePath(t *testing.T) {
 			if tt.platform == "unix" && runtime.GOOS == "windows" {
 				return
 			}
-			
+
 			result := isAbsolutePath(tt.path)
 			if result != tt.expected {
-				t.Errorf("isAbsolutePath(%s) = %v, expected %v", 
+				t.Errorf("isAbsolutePath(%s) = %v, expected %v",
 					tt.path, result, tt.expected)
 			}
 		})
@@ -238,15 +238,15 @@ func TestExtractFilename(t *testing.T) {
 		{"/var/log/app.log", "app.log"},
 		{"logs/app.log", "app.log"},
 		{"app.log", "app.log"},
-		
+
 		// Windows paths
 		{`C:\Logs\app.log`, "app.log"},
 		{`logs\app.log`, "app.log"},
-		
+
 		// Mixed separators
 		{"logs/subfolder\\app.log", "app.log"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.pattern, func(t *testing.T) {
 			result := extractFilename(tt.pattern)
@@ -268,12 +268,12 @@ func TestExtractDirectory(t *testing.T) {
 		{"/var/log/app.log", "/var/log"},
 		{"logs/app.log", "logs"},
 		{"app.log", ""},
-		
-		// Windows paths  
+
+		// Windows paths
 		{`C:\Logs\app.log`, `C:\Logs`},
 		{`logs\app.log`, `logs`},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.pattern, func(t *testing.T) {
 			result := extractDirectory(tt.pattern)
@@ -288,18 +288,18 @@ func TestExtractDirectory(t *testing.T) {
 // TestFindInvalidCharsInFilename tests character validation
 func TestFindInvalidCharsInFilename(t *testing.T) {
 	tests := []struct {
-		filename     string
+		filename      string
 		expectInvalid bool
-		platform     string
+		platform      string
 	}{
 		// Valid filenames
 		{"normal-file.log", false, "all"},
 		{"file_with_underscores.log", false, "all"},
 		{"file.with.dots.log", false, "all"},
-		
+
 		// Invalid on all platforms
 		{"file\x00null.log", true, "all"},
-		
+
 		// Invalid on Windows only
 		{"file:with:colons.log", runtime.GOOS == "windows", "windows"},
 		{"file|with|pipes.log", runtime.GOOS == "windows", "windows"},
@@ -308,12 +308,12 @@ func TestFindInvalidCharsInFilename(t *testing.T) {
 		{"file<with>brackets.log", runtime.GOOS == "windows", "windows"},
 		{`file"with"quotes.log`, runtime.GOOS == "windows", "windows"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			invalidChars := findInvalidCharsInFilename(tt.filename)
 			hasInvalid := len(invalidChars) > 0
-			
+
 			if hasInvalid != tt.expectInvalid {
 				t.Errorf("findInvalidCharsInFilename(%s) found %v chars, expectInvalid=%v",
 					tt.filename, invalidChars, tt.expectInvalid)
@@ -349,20 +349,20 @@ func TestGetSuggestionForFilename(t *testing.T) {
 			expectIn:     "app-HH-MM.log",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.fullPattern, func(t *testing.T) {
 			suggestion := getSuggestionForFilename(tt.fullPattern, tt.filename, tt.invalidChars)
-			
+
 			if !containsAny(suggestion, tt.expectIn) {
 				t.Errorf("getSuggestionForFilename(%s) = %s, expected to contain %s",
 					tt.fullPattern, suggestion, tt.expectIn)
 			}
-			
+
 			// The suggestion should not contain any invalid chars
 			for _, char := range tt.invalidChars {
 				if containsRune(suggestion, char) {
-					t.Errorf("Suggestion %s still contains invalid char %c", 
+					t.Errorf("Suggestion %s still contains invalid char %c",
 						suggestion, char)
 				}
 			}

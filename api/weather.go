@@ -139,16 +139,16 @@ func (w *WeatherClient) GetForecast(ctx context.Context, params ForecastParams) 
 
 // CurrentWeatherResponse represents the OpenWeather current weather API response
 type CurrentWeatherResponse struct {
-	Coord      Coordinates        `json:"coord"`      // Coordinates
-	Weather    []WeatherCondition `json:"weather"`    // Weather conditions array
-	Base       string             `json:"base"`       // Internal parameter
-	Main       MainWeatherData    `json:"main"`       // Temperature, pressure, humidity data
-	Visibility int                `json:"visibility"` // Visibility in meters
-	Wind       WindData           `json:"wind"`       // Wind data
-	Clouds     CloudData          `json:"clouds"`     // Cloud coverage data
+	Coord      Coordinates        `json:"coord"`          // Coordinates
+	Weather    []WeatherCondition `json:"weather"`        // Weather conditions array
+	Base       string             `json:"base"`           // Internal parameter
+	Main       MainWeatherData    `json:"main"`           // Temperature, pressure, humidity data
+	Visibility int                `json:"visibility"`     // Visibility in meters
+	Wind       WindData           `json:"wind"`           // Wind data
+	Clouds     CloudData          `json:"clouds"`         // Cloud coverage data
 	Rain       *PrecipitationData `json:"rain,omitempty"` // Rain data (if present)
 	Snow       *PrecipitationData `json:"snow,omitempty"` // Snow data (if present)
-	Dt         int64              `json:"dt"`         // Time of data calculation (Unix timestamp)
+	Dt         int64              `json:"dt"`             // Time of data calculation (Unix timestamp)
 	Sys        struct {
 		Type    int    `json:"type"`    // Internal parameter
 		Id      int    `json:"id"`      // Internal parameter
@@ -1031,17 +1031,17 @@ func (w *WeatherClientWithRateLimit) GetCurrentWeatherWithRateLimit(ctx context.
 // GetTodayWeatherWithCache fetches weather using cache for forecast data and live API for current conditions
 func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Context, params ForecastParams, targetUnits string, cacheManager *CacheManager) (*TodayWeatherData, *ForecastResponse, error) {
 	complete := logger.LogOperationStart("get_today_weather_with_cache", map[string]any{
-		"latitude":     params.Latitude,
-		"longitude":    params.Longitude,
-		"units":        params.Units,
-		"target_units": targetUnits,
+		"latitude":      params.Latitude,
+		"longitude":     params.Longitude,
+		"units":         params.Units,
+		"target_units":  targetUnits,
 		"cache_enabled": cacheManager != nil,
 	})
 
 	// Check if cache is valid for today
 	if cacheManager != nil && cacheManager.IsValidForToday() {
 		logger.Debug("Using cached weather data for forecast values")
-		
+
 		// Try to read cache
 		cache, err := cacheManager.Read()
 		if err == nil {
@@ -1057,7 +1057,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Contex
 					if len(currentWeather.Weather) > 0 {
 						currentConditions = currentWeather.Weather[0].Description
 					}
-					
+
 					// Calculate rain chance from current data
 					rainChance := 0.0
 					if currentWeather.Rain != nil && currentWeather.Rain.OneHour > 0 {
@@ -1067,7 +1067,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Contex
 					} else if currentWeather.Clouds.All > 80 {
 						rainChance = float64(currentWeather.Clouds.All) / 100.0
 					}
-					
+
 					// Check for weather alerts
 					var weatherAlerts []string
 					for _, condition := range currentWeather.Weather {
@@ -1075,7 +1075,7 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Contex
 							weatherAlerts = append(weatherAlerts, condition.Description)
 						}
 					}
-					
+
 					// Merge cached forecast data with live current conditions
 					todayData := &TodayWeatherData{
 						TempHigh:          cache.DailyForecast.TempHigh,
@@ -1089,12 +1089,12 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Contex
 						Units:             cache.Units,
 						Location:          cache.Location,
 					}
-					
+
 					// Convert units if needed
 					if targetUnits != "" && targetUnits != todayData.Units {
 						todayData = w.ConvertWeatherData(todayData, targetUnits)
 					}
-					
+
 					complete(nil)
 					logger.Debug("Weather data retrieved using cache + current conditions")
 					return todayData, nil, nil
@@ -1106,10 +1106,10 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Contex
 			logger.Warn("Failed to read cache: %v", err)
 		}
 	}
-	
+
 	// Fall back to full API call (either no cache, invalid cache, or error)
 	logger.Debug("Fetching full weather forecast from API")
-	
+
 	// Get forecast data with rate limiting and retries
 	forecast, err := w.GetForecastWithRateLimit(ctx, params)
 	if err != nil {
@@ -1139,4 +1139,172 @@ func (w *WeatherClientWithRateLimit) GetTodayWeatherWithCache(ctx context.Contex
 
 	complete(nil)
 	return todayData, forecast, nil
+}
+
+// GetOneCallWeatherWithRateLimit fetches One Call API data with rate limiting
+func (w *WeatherClientWithRateLimit) GetOneCallWeatherWithRateLimit(ctx context.Context, params ForecastParams) (*OneCallResponse, error) {
+	// Apply rate limiting
+	if err := w.rateLimiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter cancelled: %w", err)
+	}
+
+	// Validate input parameters before making request
+	if err := validateForecastParams(params); err != nil {
+		return nil, fmt.Errorf("invalid parameters: %w", err)
+	}
+
+	return w.WeatherClient.GetOneCallWeather(ctx, params)
+}
+
+// GetTodayWeatherWithOneCall fetches weather using One Call API 3.0
+func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCall(ctx context.Context, params ForecastParams, targetUnits string) (*TodayWeatherData, error) {
+	complete := logger.LogOperationStart("get_today_weather_onecall", map[string]any{
+		"latitude":     params.Latitude,
+		"longitude":    params.Longitude,
+		"units":        params.Units,
+		"target_units": targetUnits,
+	})
+
+	// Get One Call data with rate limiting and retries
+	oneCall, err := w.GetOneCallWeatherWithRateLimit(ctx, params)
+	if err != nil {
+		complete(fmt.Errorf("failed to fetch One Call data: %w", err))
+		return nil, fmt.Errorf("unable to fetch weather data: %w", err)
+	}
+
+	// Extract today's weather data
+	todayData, err := w.ExtractTodayWeatherFromOneCall(oneCall)
+	if err != nil {
+		complete(fmt.Errorf("failed to extract today's data: %w", err))
+		return nil, fmt.Errorf("unable to process weather data: %w", err)
+	}
+
+	// Set proper units
+	todayData.Units = params.Units
+
+	// Convert units if needed
+	if targetUnits != "" && targetUnits != todayData.Units {
+		todayData = w.ConvertWeatherData(todayData, targetUnits)
+	}
+
+	complete(nil)
+	return todayData, nil
+}
+
+// GetTodayWeatherWithOneCallCache fetches weather using One Call API with caching
+func (w *WeatherClientWithRateLimit) GetTodayWeatherWithOneCallCache(ctx context.Context, params ForecastParams, targetUnits string, cacheManager *CacheManager) (*TodayWeatherData, *OneCallResponse, error) {
+	complete := logger.LogOperationStart("get_today_weather_onecall_cache", map[string]any{
+		"latitude":      params.Latitude,
+		"longitude":     params.Longitude,
+		"units":         params.Units,
+		"target_units":  targetUnits,
+		"cache_enabled": cacheManager != nil,
+	})
+
+	var oneCall *OneCallResponse
+	var todayData *TodayWeatherData
+
+	// Check if cache is valid for today
+	if cacheManager != nil && cacheManager.IsValidForToday() {
+		logger.Debug("Using cached weather data for daily forecast values")
+
+		// Try to read cache
+		cache, err := cacheManager.Read()
+		if err == nil {
+			// Verify cache is for the same location
+			if cache.Latitude == params.Latitude && cache.Longitude == params.Longitude && cache.Units == params.Units {
+				// Fetch fresh One Call data for current conditions
+				oneCall, err = w.GetOneCallWeatherWithRateLimit(ctx, params)
+				if err != nil {
+					logger.Warn("Failed to fetch One Call data, falling back to full fetch: %v", err)
+				} else {
+					// Use cached daily min/max with fresh current conditions
+					todayData = &TodayWeatherData{
+						TempHigh:          cache.DailyForecast.TempHigh, // Cached daily high
+						TempLow:           cache.DailyForecast.TempLow,  // Cached daily low
+						CurrentTemp:       oneCall.Current.Temp,         // Fresh current temp
+						CurrentConditions: "",
+						RainChance:        0.0,
+						WindConditions:    "",
+						WeatherAlerts:     []string{},
+						LastUpdated:       time.Now(),
+						Units:             params.Units,
+						Location:          cache.Location,
+					}
+
+					// Extract fresh current conditions
+					if len(oneCall.Current.Weather) > 0 {
+						todayData.CurrentConditions = oneCall.Current.Weather[0].Description
+					}
+
+					// Format fresh wind conditions
+					todayData.WindConditions = formatWindConditions(WindData{
+						Speed: oneCall.Current.WindSpeed,
+						Deg:   float64(oneCall.Current.WindDeg),
+						Gust:  oneCall.Current.WindGust,
+					})
+
+					// Get fresh rain chance from today's daily forecast
+					if len(oneCall.Daily) > 0 {
+						todayData.RainChance = oneCall.Daily[0].Pop
+					}
+
+					// Check for fresh weather alerts
+					if len(oneCall.Alerts) > 0 {
+						for _, alert := range oneCall.Alerts {
+							todayData.WeatherAlerts = append(todayData.WeatherAlerts, alert.Event)
+						}
+					}
+
+					// Convert units if needed
+					if targetUnits != "" && targetUnits != todayData.Units {
+						todayData = w.ConvertWeatherData(todayData, targetUnits)
+					}
+
+					logger.Info("Successfully used cached daily values with fresh current conditions")
+					complete(nil)
+					return todayData, oneCall, nil
+				}
+			} else {
+				logger.Debug("Cache location mismatch, fetching fresh data")
+			}
+		} else {
+			logger.Debug("Failed to read cache: %v", err)
+		}
+	}
+
+	// Fallback: fetch complete fresh data
+	logger.Debug("Fetching fresh One Call weather data")
+	oneCall, err := w.GetOneCallWeatherWithRateLimit(ctx, params)
+	if err != nil {
+		complete(fmt.Errorf("failed to fetch One Call data: %w", err))
+		return nil, nil, fmt.Errorf("unable to fetch weather data: %w", err)
+	}
+
+	// Extract today's weather data
+	todayData, err = w.ExtractTodayWeatherFromOneCall(oneCall)
+	if err != nil {
+		complete(fmt.Errorf("failed to extract today's data: %w", err))
+		return nil, nil, fmt.Errorf("unable to process weather data: %w", err)
+	}
+
+	// Set proper units and location
+	todayData.Units = params.Units
+
+	// Convert units if needed
+	if targetUnits != "" && targetUnits != todayData.Units {
+		todayData = w.ConvertWeatherData(todayData, targetUnits)
+	}
+
+	// Save to cache if manager is available
+	if cacheManager != nil && oneCall != nil {
+		logger.Debug("Saving fresh One Call data to cache")
+		if err := cacheManager.WriteOneCall(oneCall, todayData); err != nil {
+			logger.Warn("Failed to save weather cache: %v", err)
+			// Continue despite cache write failure
+		}
+	}
+
+	complete(nil)
+	return todayData, oneCall, nil
 }

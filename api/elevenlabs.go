@@ -39,19 +39,19 @@ type ElevenLabsClient struct {
 
 // ElevenLabsConfig contains configuration for ElevenLabs API client
 type ElevenLabsConfig struct {
-	APIKey      string
-	VoiceID     string
-	Model       string
-	Stability   float64
-	Similarity  float64
-	Style       float64
-	Speed       float64
-	Format      string
-	Timeout     time.Duration
-	MaxRetries  int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
-	RateLimit   int // requests per minute
+	APIKey     string
+	VoiceID    string
+	Model      string
+	Stability  float64
+	Similarity float64
+	Style      float64
+	Speed      float64
+	Format     string
+	Timeout    time.Duration
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+	RateLimit  int // requests per minute
 }
 
 // ElevenLabsRateLimiter handles rate limiting for ElevenLabs API requests
@@ -73,9 +73,9 @@ type CustomVoiceSettings struct {
 
 // CustomTextToSpeechRequest for direct API calls with speed support
 type CustomTextToSpeechRequest struct {
-	Text          string                `json:"text"`
-	ModelID       string                `json:"model_id,omitempty"`
-	VoiceSettings *CustomVoiceSettings  `json:"voice_settings,omitempty"`
+	Text          string               `json:"text"`
+	ModelID       string               `json:"model_id,omitempty"`
+	VoiceSettings *CustomVoiceSettings `json:"voice_settings,omitempty"`
 }
 
 // NewElevenLabsRateLimiter creates a new rate limiter for ElevenLabs API
@@ -202,10 +202,10 @@ func NewElevenLabsClient(config ElevenLabsConfig) (*ElevenLabsClient, error) {
 
 // TextToSpeechRequest contains the request data for generating speech
 type TextToSpeechRequest struct {
-	Text     string // Text to convert to speech
-	VoiceID  string // Override default voice ID (optional)
+	Text      string // Text to convert to speech
+	VoiceID   string // Override default voice ID (optional)
 	OutputDir string // Directory to save the generated audio file
-	FileName string // Name for the output file (without extension)
+	FileName  string // Name for the output file (without extension)
 }
 
 // TextToSpeechResponse contains the generated speech audio
@@ -221,14 +221,14 @@ type TextToSpeechResponse struct {
 func (c *ElevenLabsClient) GenerateTextToSpeech(ctx context.Context, request TextToSpeechRequest) (*TextToSpeechResponse, error) {
 	// AIDEV-NOTE: Enhanced with retry logic, rate limiting, and audio format conversion
 	complete := logger.LogOperationStart("elevenlabs_text_to_speech_with_retry", map[string]any{
-		"voice_id":     c.getVoiceID(request.VoiceID),
-		"model":        c.config.Model,
-		"stability":    c.config.Stability,
-		"similarity":   c.config.Similarity,
-		"style":        c.config.Style,
-		"speed":        c.config.Speed,
-		"text_length":  len(request.Text),
-		"max_retries":  c.config.MaxRetries,
+		"voice_id":    c.getVoiceID(request.VoiceID),
+		"model":       c.config.Model,
+		"stability":   c.config.Stability,
+		"similarity":  c.config.Similarity,
+		"style":       c.config.Style,
+		"speed":       c.config.Speed,
+		"text_length": len(request.Text),
+		"max_retries": c.config.MaxRetries,
 	})
 
 	// Validate input
@@ -286,7 +286,6 @@ func (c *ElevenLabsClient) GenerateTextToSpeech(ctx context.Context, request Tex
 	}, nil
 }
 
-
 // executeCustomTextToSpeechWithRetry executes a custom TTS request with speed support
 func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Context, voiceID string, ttsReq CustomTextToSpeechRequest) ([]byte, error) {
 	var lastErr error
@@ -313,8 +312,6 @@ func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Contex
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request: %w", err)
 		}
-
-
 
 		// Create HTTP request
 		req, err := http.NewRequestWithContext(ctx, "POST", baseURL, bytes.NewBuffer(jsonData))
@@ -372,7 +369,7 @@ func (c *ElevenLabsClient) executeCustomTextToSpeechWithRetry(ctx context.Contex
 		if resp.StatusCode != http.StatusOK {
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			lastErr = fmt.Errorf("ElevenLabs API returned status %d: %s", resp.StatusCode, string(bodyBytes))
-			
+
 			elevenLabsErr := &ElevenLabsAPIError{
 				Type:       "api_error",
 				Message:    string(bodyBytes),
@@ -632,19 +629,18 @@ func (c *ElevenLabsClient) calculateMP3Duration(mp3FilePath string) (int, error)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get MP3 file info: %w", err)
 	}
-	
+
 	// Simple estimation: MP3 at 128kbps ≈ 16KB per second
 	// This is rough but sufficient for logging purposes
 	fileSizeKB := fileInfo.Size() / 1024
 	estimatedSeconds := fileSizeKB / 16
 	estimatedMs := int(estimatedSeconds * 1000)
-	
+
 	logger.LogWithFields(logger.InfoLevel, "MP3 duration estimated", map[string]any{
-		"file_path":       mp3FilePath,
-		"file_size_kb":    fileSizeKB,
-		"duration_ms":     estimatedMs,
+		"file_path":    mp3FilePath,
+		"file_size_kb": fileSizeKB,
+		"duration_ms":  estimatedMs,
 	})
-	
+
 	return estimatedMs, nil
 }
-

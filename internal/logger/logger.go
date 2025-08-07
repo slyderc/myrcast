@@ -56,7 +56,7 @@ var (
 func Initialize(config Config) error {
 	globalMu.Lock()
 	defer globalMu.Unlock()
-	
+
 	var err error
 	globalLogger, err = NewEnhancedLogger(config)
 	return err
@@ -139,7 +139,7 @@ func NewEnhancedLogger(config Config) (*EnhancedLogger, error) {
 	})
 
 	logger.Logger = slog.New(handler)
-	
+
 	// Log initialization
 	logger.Debug("Enhanced logger initialized",
 		slog.String("log_file", logger.fileName),
@@ -157,27 +157,27 @@ func (l *EnhancedLogger) openLogFile() (*os.File, error) {
 // openLogFileUnsafe creates or opens the current log file (caller must hold mutex)
 func (l *EnhancedLogger) openLogFileUnsafe() (*os.File, error) {
 	logDir := expandLogDirectory(l.config.Directory)
-	
+
 	// Generate filename from pattern
 	fileName := generateLogFilename(l.config.FilenamePattern)
 	filePath := filepath.Join(logDir, fileName)
-	
+
 	// Open file in append mode
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Get file info for size tracking
 	info, err := file.Stat()
 	if err != nil {
 		file.Close()
 		return nil, err
 	}
-	
+
 	l.fileName = filePath
 	l.fileSize = info.Size()
-	
+
 	return file, nil
 }
 
@@ -186,18 +186,18 @@ func expandLogDirectory(dir string) string {
 	if dir == "" {
 		dir = "logs"
 	}
-	
+
 	// Handle absolute paths
 	if filepath.IsAbs(dir) {
 		return dir
 	}
-	
+
 	// Handle relative paths
 	if dir == "logs" || strings.HasPrefix(dir, "./") {
 		// Use working directory
 		return dir
 	}
-	
+
 	// Platform-specific default directories
 	switch runtime.GOOS {
 	case "windows":
@@ -211,7 +211,7 @@ func expandLogDirectory(dir string) string {
 			return filepath.Join(home, ".myrcast", "logs")
 		}
 	}
-	
+
 	// Fallback to working directory
 	return "logs"
 }
@@ -221,10 +221,10 @@ func generateLogFilename(pattern string) string {
 	if pattern == "" {
 		pattern = "myrcast-YYYYMMDD.log"
 	}
-	
+
 	now := time.Now()
 	result := pattern
-	
+
 	// Replace date tokens
 	result = strings.ReplaceAll(result, "YYYY", fmt.Sprintf("%04d", now.Year()))
 	result = strings.ReplaceAll(result, "YY", fmt.Sprintf("%02d", now.Year()%100))
@@ -234,7 +234,7 @@ func generateLogFilename(pattern string) string {
 	result = strings.ReplaceAll(result, "D", fmt.Sprintf("%d", now.Day()))
 	result = strings.ReplaceAll(result, "HH", fmt.Sprintf("%02d", now.Hour()))
 	result = strings.ReplaceAll(result, "H", fmt.Sprintf("%d", now.Hour()))
-	
+
 	return result
 }
 
@@ -266,19 +266,19 @@ func (l *EnhancedLogger) checkRotationUnsafe() error {
 	if l.file == nil || !l.config.Enabled {
 		return nil
 	}
-	
+
 	// Check file size
 	maxSize := int64(l.config.MaxSizeMB) * 1024 * 1024
 	if maxSize > 0 && l.fileSize >= maxSize {
 		return l.rotateUnsafe()
 	}
-	
+
 	// Check if date has changed (for daily rotation)
 	currentFileName := generateLogFilename(l.config.FilenamePattern)
 	if filepath.Base(l.fileName) != currentFileName {
 		return l.rotateUnsafe()
 	}
-	
+
 	return nil
 }
 
@@ -295,18 +295,18 @@ func (l *EnhancedLogger) rotateUnsafe() error {
 	if l.file != nil {
 		l.file.Close()
 	}
-	
+
 	// Archive current file if it exists and has content
 	if l.fileName != "" {
 		if info, err := os.Stat(l.fileName); err == nil && info.Size() > 0 {
 			// Create archived filename with timestamp
-			dir := filepath.Dir(l.fileName) 
+			dir := filepath.Dir(l.fileName)
 			base := filepath.Base(l.fileName)
 			ext := filepath.Ext(base)
 			name := strings.TrimSuffix(base, ext)
 			timestamp := time.Now().Format("20060102-150405")
 			archivedPath := filepath.Join(dir, fmt.Sprintf("%s-%s%s", name, timestamp, ext))
-			
+
 			// Move current file to archived location
 			if err := os.Rename(l.fileName, archivedPath); err != nil {
 				// If rename fails, try to continue anyway
@@ -314,15 +314,15 @@ func (l *EnhancedLogger) rotateUnsafe() error {
 			}
 		}
 	}
-	
+
 	// Open new file
 	file, err := l.openLogFileUnsafe()
 	if err != nil {
 		return err
 	}
-	
+
 	l.file = file
-	
+
 	// Update multi-writer
 	writers := []io.Writer{}
 	if l.config.ConsoleOutput {
@@ -330,7 +330,7 @@ func (l *EnhancedLogger) rotateUnsafe() error {
 	}
 	writers = append(writers, l.file)
 	l.multiWriter = io.MultiWriter(writers...)
-	
+
 	// Recreate handler with new writer - use logger as writer for rotation
 	handler := slog.NewTextHandler(l, &slog.HandlerOptions{
 		Level: parseLogLevel(l.config.Level),
@@ -349,12 +349,12 @@ func (l *EnhancedLogger) rotateUnsafe() error {
 		},
 	})
 	l.Logger = slog.New(handler)
-	
+
 	// Clean old files if needed
 	if l.config.MaxFiles > 0 {
 		go l.cleanOldFiles()
 	}
-	
+
 	return nil
 }
 
@@ -370,18 +370,18 @@ func (l *EnhancedLogger) cleanOldFiles() {
 	pattern = strings.ReplaceAll(pattern, "D", "*")
 	pattern = strings.ReplaceAll(pattern, "HH", "*")
 	pattern = strings.ReplaceAll(pattern, "H", "*")
-	
+
 	matches, err := filepath.Glob(filepath.Join(logDir, pattern))
 	if err != nil {
 		return
 	}
-	
+
 	// Sort by modification time
 	type fileInfo struct {
 		path    string
 		modTime time.Time
 	}
-	
+
 	files := make([]fileInfo, 0, len(matches))
 	for _, match := range matches {
 		info, err := os.Stat(match)
@@ -390,7 +390,7 @@ func (l *EnhancedLogger) cleanOldFiles() {
 		}
 		files = append(files, fileInfo{path: match, modTime: info.ModTime()})
 	}
-	
+
 	// Sort newest first
 	for i := 0; i < len(files)-1; i++ {
 		for j := i + 1; j < len(files); j++ {
@@ -399,7 +399,7 @@ func (l *EnhancedLogger) cleanOldFiles() {
 			}
 		}
 	}
-	
+
 	// Remove old files (only if MaxFiles is positive and we have excess files)
 	if l.config.MaxFiles > 0 && len(files) > l.config.MaxFiles {
 		for i := l.config.MaxFiles; i < len(files); i++ {
@@ -412,20 +412,20 @@ func (l *EnhancedLogger) cleanOldFiles() {
 func (l *EnhancedLogger) Write(p []byte) (n int, err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	n, err = l.multiWriter.Write(p)
 	if err != nil {
 		return
 	}
-	
+
 	l.fileSize += int64(n)
-	
+
 	// Check rotation after writing
 	if err := l.checkRotationUnsafe(); err != nil {
 		// Log rotation error but continue
 		fmt.Fprintf(os.Stderr, "Log rotation error: %v\n", err)
 	}
-	
+
 	return
 }
 
@@ -433,7 +433,7 @@ func (l *EnhancedLogger) Write(p []byte) (n int, err error) {
 func (l *EnhancedLogger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.file != nil {
 		return l.file.Close()
 	}
@@ -443,7 +443,7 @@ func (l *EnhancedLogger) Close() error {
 // LogExecutionSummary logs a formatted execution summary for audit purposes
 func (l *EnhancedLogger) LogExecutionSummary(startTime time.Time, configFile string, mode string, results []string, exitCode int) {
 	duration := time.Since(startTime)
-	
+
 	l.Info("=== EXECUTION SUMMARY ===")
 	l.Info("Execution details",
 		slog.Time("start_time", startTime),
@@ -451,7 +451,7 @@ func (l *EnhancedLogger) LogExecutionSummary(startTime time.Time, configFile str
 		slog.String("mode", mode),
 		slog.Duration("total_duration", duration),
 		slog.Int("exit_code", exitCode))
-	
+
 	for _, result := range results {
 		l.Info(result)
 	}
@@ -470,7 +470,7 @@ func SetOutput(filename string) error {
 		MaxSizeMB:       0,
 		ConsoleOutput:   true,
 	}
-	
+
 	return Initialize(config)
 }
 

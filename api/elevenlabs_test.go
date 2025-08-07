@@ -751,7 +751,7 @@ func TestCustomVoiceSettingsStructure(t *testing.T) {
 	style := 0.2
 	speed := 1.5
 	speakerBoost := true
-	
+
 	settings := CustomVoiceSettings{
 		Stability:       &stability,
 		SimilarityBoost: &similarityBoost,
@@ -788,4 +788,3 @@ func TestCustomVoiceSettingsStructure(t *testing.T) {
 		t.Error("Expected speaker boost to be true")
 	}
 }
-

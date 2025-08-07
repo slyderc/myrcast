@@ -48,14 +48,14 @@ type Claude struct {
 
 // ElevenLabs contains ElevenLabs API configuration
 type ElevenLabs struct {
-	VoiceID     string  `toml:"voice_id"`     // ElevenLabs voice ID
-	Model       string  `toml:"model"`        // Voice model (e.g., eleven_multilingual_v1)
-	Stability   float64 `toml:"stability"`    // Voice stability (0.0-1.0)
-	Similarity  float64 `toml:"similarity"`   // Voice similarity boost (0.0-1.0)
-	Style       float64 `toml:"style"`        // Style exaggeration (0.0-1.0)
-	Speed       float64 `toml:"speed"`        // Speaking speed (0.25-4.0, 1.0 = normal)
-	Format      string  `toml:"format"`       // Audio format (e.g., mp3_44100_128)
-	MaxRetries  int     `toml:"max_retries"`  // Max retry attempts
+	VoiceID     string  `toml:"voice_id"`      // ElevenLabs voice ID
+	Model       string  `toml:"model"`         // Voice model (e.g., eleven_multilingual_v1)
+	Stability   float64 `toml:"stability"`     // Voice stability (0.0-1.0)
+	Similarity  float64 `toml:"similarity"`    // Voice similarity boost (0.0-1.0)
+	Style       float64 `toml:"style"`         // Style exaggeration (0.0-1.0)
+	Speed       float64 `toml:"speed"`         // Speaking speed (0.25-4.0, 1.0 = normal)
+	Format      string  `toml:"format"`        // Audio format (e.g., mp3_44100_128)
+	MaxRetries  int     `toml:"max_retries"`   // Max retry attempts
 	BaseDelayMs int     `toml:"base_delay_ms"` // Base delay in milliseconds
 	MaxDelayMs  int     `toml:"max_delay_ms"`  // Max delay in milliseconds
 	RateLimit   int     `toml:"rate_limit"`    // Requests per minute
@@ -125,7 +125,6 @@ func (c *Config) ApplyDefaults() {
 		c.Weather.Units = "imperial"
 	}
 
-
 	// Default import path
 	if strings.TrimSpace(c.Output.ImportPath) == "" {
 		homeDir, err := os.UserHomeDir()
@@ -135,7 +134,6 @@ func (c *Config) ApplyDefaults() {
 			c.Output.ImportPath = filepath.Join(homeDir, "Documents", "Myrcast")
 		}
 	}
-
 
 	// Note: MediaID is required - no default value provided
 
@@ -193,7 +191,7 @@ func (c *Config) ApplyDefaults() {
 	// Default logging settings
 	// Enable logging by default for production use
 	// Note: Explicitly set to false in config if you don't want logging
-	
+
 	if strings.TrimSpace(c.Logging.Directory) == "" {
 		c.Logging.Directory = "logs"
 	}
@@ -255,7 +253,6 @@ func (c *Config) Validate() error {
 	if err := c.validateOutput(); err != nil {
 		errors = append(errors, err...)
 	}
-
 
 	// Validate prompt settings
 	if err := c.validatePrompt(); err != nil {
@@ -381,7 +378,6 @@ func (c *Config) validateWeather() []ValidationError {
 func (c *Config) validateOutput() []ValidationError {
 	var errors []ValidationError
 
-
 	// Validate import path
 	if strings.TrimSpace(c.Output.ImportPath) == "" {
 		errors = append(errors, ValidationError{
@@ -398,7 +394,6 @@ func (c *Config) validateOutput() []ValidationError {
 
 	return errors
 }
-
 
 // validatePrompt checks prompt configuration
 func (c *Config) validatePrompt() []ValidationError {
@@ -613,7 +608,7 @@ func (c *Config) validateCache() []ValidationError {
 				})
 			}
 		}
-		
+
 		// Test if we can write to the cache file location
 		testFile := c.Cache.FilePath + ".test"
 		if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {

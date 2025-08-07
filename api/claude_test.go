@@ -242,10 +242,6 @@ func TestClaudeAPIIntegration(t *testing.T) {
 	// But we've verified the client is created properly with the correct configuration
 }
 
-
-
-
-
 // TestFormatWeatherContext tests the weather context formatting for Claude
 func TestFormatWeatherContext(t *testing.T) {
 	// Create mock forecast data

@@ -118,7 +118,7 @@ func TestLogLevels(t *testing.T) {
 // TestLogRotation tests file rotation based on size
 func TestLogRotation(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	config := Config{
 		Enabled:         true,
 		Directory:       tmpDir,
@@ -137,7 +137,7 @@ func TestLogRotation(t *testing.T) {
 
 	// Write enough data to trigger rotation (over 1MB)
 	largeMessage := strings.Repeat("This is a test message for rotation. ", 100)
-	iterations := 1024 * 1024 / len(largeMessage) + 100 // Ensure we go over 1MB
+	iterations := 1024*1024/len(largeMessage) + 100 // Ensure we go over 1MB
 
 	for i := 0; i < iterations; i++ {
 		logger.Info(largeMessage)
@@ -152,7 +152,7 @@ func TestLogRotation(t *testing.T) {
 		t.Fatalf("Failed to glob log files: %v", err)
 	}
 	t.Logf("Log files found: %v", files)
-	
+
 	// Check that rotation occurred by checking file size
 	logPath := filepath.Join(tmpDir, "test-rotation.log")
 	info, err := os.Stat(logPath)
@@ -171,7 +171,7 @@ func TestLogRotation(t *testing.T) {
 // TestFilenamePatternGeneration tests the date pattern replacement
 func TestFilenamePatternGeneration(t *testing.T) {
 	now := time.Now()
-	
+
 	tests := []struct {
 		pattern  string
 		contains []string
@@ -251,11 +251,11 @@ func TestPlatformSpecificPaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := expandLogDirectory(tt.input)
-			
+
 			if tt.isAbs && !filepath.IsAbs(result) {
 				t.Errorf("Expected absolute path, got %s", result)
 			}
-			
+
 			if !strings.Contains(result, tt.contains) {
 				t.Errorf("expandLogDirectory(%s) = %s, expected to contain %s",
 					tt.input, result, tt.contains)
@@ -509,7 +509,7 @@ func TestLoggerCleanup(t *testing.T) {
 
 	// Call cleanup synchronously since we're in the same package
 	logger.cleanOldFiles()
-	
+
 	// Give a small buffer for file operations to complete
 	time.Sleep(100 * time.Millisecond)
 
