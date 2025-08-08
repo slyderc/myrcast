@@ -81,13 +81,14 @@ scratch.*
 
 # Myrcast specific files
 .myrcast/
-.taskmaster/temp/
+.taskmaster/
 import/
 output/
 
 # MCP and Claude configuration (may contain sensitive data)
 .mcp.json
 .claude/
+CLAUDE.md
 
 # Documentation build artifacts
 docs/_build/
