@@ -89,6 +89,7 @@ output/
 .mcp.json
 .claude/
 CLAUDE.md
+PROJECT_PROMPT.md
 
 # Documentation build artifacts
 docs/_build/
