@@ -84,6 +84,7 @@ scratch.*
 .taskmaster/
 import/
 output/
+demo_output/
 
 # MCP and Claude configuration (may contain sensitive data)
 .mcp.json
