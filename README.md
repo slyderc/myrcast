@@ -4,6 +4,10 @@ Myrcast automatically generates professional AI-voiced weather reports for radio
 
 Perfect for radio stations using Myriad automation or similar broadcast systems.
 
+![Now Wave Radio Logo](nwr_logo.jpg)
+
+Proudly running Myriad and Myrcast at [Now Wave Radio](https://nowwave.radio)!
+
 ## System Requirements
 
 - **Windows, macOS, or Linux** (64-bit)
